@@ -105,14 +105,23 @@ Data is sourced from the STR Law Guys Google Sheets Appointments tab and GHL CRM
 - See `SECURITY.md` for all security rules — they are non-negotiable
 - RLS enabled on all database tables; every query scoped by org/user
 
+## Git Workflow — ALWAYS follow this order
+1. All changes go to `dev` branch first — NEVER commit directly to `master`
+2. Push to `dev` and let Ed verify locally or on GitHub
+3. Only merge `dev` → `master` (via PR) when Ed explicitly says "publish" or "push to main"
+4. `master` is connected to Vercel production — every merge triggers a deploy and uses a Vercel build credit
+5. To save Vercel build limits: batch multiple fixes into one `dev` → `master` merge instead of merging every small fix immediately
+
 ## Definition of Done
 1. Behavior matches the request
 2. No console or terminal errors
 3. /review passes
 4. Tests pass (if any exist) / test data verified
-5. Changes committed via /commit
+5. Changes pushed to `dev` and verified; merged to `master` only on Ed's go-ahead
 
 ## Current Status
-- What's built so far: nothing yet — initial scaffold
-- What's in progress: filling out project templates and PRD
+- What's built so far: Overview page fully wired to Google Sheets (live data on reload)
+- Components: KpiCard, MonthlyChart, CashBySourceDonut, LeadQualityChart, CashTrendChart, DateRangePicker
+- Lib: sheets.ts (Leads + Appointments + CEO Dashboard), dateRange.ts
+- In progress: Sales Calls & Training page, Weekly Progress page
 - Known bugs: none

@@ -154,11 +154,13 @@ export default async function OverviewPage({
   const showRate  = booked > 0 ? ((showed / booked) * 100).toFixed(1) : '0'
   const closeRate = showed > 0 ? ((closed / showed) * 100).toFixed(1) : '0'
 
-  // Ad spend (always MTD)
-  const adSpendMtd     = parseMoney(adSpendRaw[0] ?? '')
-  const costPerLead     = leads  > 0 ? adSpendMtd / leads  : 0
-  const costPerBooked   = booked > 0 ? adSpendMtd / booked : 0
-  const costPerQual     = showed > 0 ? adSpendMtd / showed : 0
+  // Ad spend tiles always use current-month data, never the date picker range
+  const thisMonthRange = getDateRange('this_month', now)
+  const mtd = computeRangeKpis(leadRows, rows, thisMonthRange)
+  const adSpendMtd   = parseMoney(adSpendRaw[0] ?? '')
+  const costPerLead  = mtd.leads  > 0 ? adSpendMtd / mtd.leads  : 0
+  const costPerBooked= mtd.booked > 0 ? adSpendMtd / mtd.booked : 0
+  const costPerQual  = mtd.showed > 0 ? adSpendMtd / mtd.showed : 0
 
   // Weekly breakdown for current month (from appointment data)
   const weeks = getMonthWeeks(currentYear, currentMonth, now)
@@ -269,9 +271,9 @@ export default async function OverviewPage({
         {/* MTD efficiency tiles */}
         <div className="grid grid-cols-4 gap-3 mb-5">
           <KpiCard label="Ad Spend (MTD)" value={fmt(adSpendMtd)}    sub={`${currentMonthName} ${currentYear}`} icon={DollarSign}   iconColor="text-blue-500" />
-          <KpiCard label="Cost / Lead"    value={fmt(costPerLead)}   sub={`${leads} leads`}                     icon={Users}        iconColor="text-teal-500" />
-          <KpiCard label="Cost / Booked"  value={fmt(costPerBooked)} sub={`${booked} booked`}                   icon={CalendarDays} iconColor="text-cyan-500" />
-          <KpiCard label="Cost / Qualified" value={fmt(costPerQual)} sub={`${showed} qualified`}                icon={Phone}        iconColor="text-green-500" />
+          <KpiCard label="Cost / Lead"    value={fmt(costPerLead)}   sub={`${mtd.leads} leads`}                 icon={Users}        iconColor="text-teal-500" />
+          <KpiCard label="Cost / Booked"  value={fmt(costPerBooked)} sub={`${mtd.booked} booked`}               icon={CalendarDays} iconColor="text-cyan-500" />
+          <KpiCard label="Cost / Qualified" value={fmt(costPerQual)} sub={`${mtd.showed} qualified`}            icon={Phone}        iconColor="text-green-500" />
         </div>
 
         {/* Weekly table */}
