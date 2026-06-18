@@ -3,7 +3,10 @@ export const dynamic = 'force-dynamic'
 import { getLeads, getAppointments, getCeoDashboardAdSpend } from '@/lib/sheets'
 import KpiCard from '@/components/KpiCard'
 import MonthlyChart from '@/components/MonthlyChart'
+import CashBySourceDonut from '@/components/CashBySourceDonut'
+import LeadQualityChart from '@/components/LeadQualityChart'
 import PageHeader from '@/components/PageHeader'
+import type { LeadQualityDataPoint } from '@/components/LeadQualityChart'
 import type { MonthlyDataPoint } from '@/components/MonthlyChart'
 import type { AppointmentRow, LeadRow } from '@/types/appointments'
 import { Users, CalendarDays, Phone, CheckCircle2, DollarSign, Clock } from 'lucide-react'
@@ -32,8 +35,49 @@ function classifySource(row: AppointmentRow): 'Paid' | 'Referral' | 'Organic' {
   return 'Organic'
 }
 
+function computeMonthKpis(leadRows: LeadRow[], rows: AppointmentRow[], year: number, month: number) {
+  const leads = leadRows.filter((r) => {
+    const d = splitDate(r.dateIn)
+    return d && d.year === year && d.month === month
+  }).length
+
+  const monthRows = rows.filter((r) => {
+    const d = splitDate(r.dateIn)
+    return d && d.year === year && d.month === month
+  })
+  const bookedEligible = monthRows.filter(
+    (r) => r.callStatus && r.callStatus.toLowerCase() !== 'rescheduled' && r.email && r.email !== ''
+  )
+  const booked = new Set(bookedEligible.map((r) => r.email.toLowerCase())).size
+  const showed = monthRows.filter((r) => r.callStatus === 'Showed').length
+  const won = monthRows.filter((r) => r.callOutcome === 'WON')
+  const closed = won.length
+  const cash = won.reduce((sum, r) => sum + parseMoney(r.cashCollected), 0)
+
+  let totalDays = 0, dayCount = 0
+  for (const r of won) {
+    const di = splitDate(r.dateIn)
+    const dc = splitDate(r.callDate)
+    if (di && dc) {
+      const diff = Math.round((Date.UTC(dc.year, dc.month, dc.day) - Date.UTC(di.year, di.month, di.day)) / 86400000)
+      if (diff >= 0) { totalDays += diff; dayCount++ }
+    }
+  }
+  return { leads, booked, showed, closed, cash, avgDays: dayCount > 0 ? parseFloat((totalDays / dayCount).toFixed(1)) : 0 }
+}
+
+function makeDelta(current: number, prior: number, label: string, invert = false) {
+  const diff = current - prior
+  const pct = prior > 0 ? (diff / prior) * 100 : 0
+  return { diff, pct, label, invert }
+}
+
 function computeKpis(leadRows: LeadRow[], rows: AppointmentRow[]) {
-  const currentYear = new Date().getFullYear()
+  const now = new Date()
+  const currentYear = now.getFullYear()
+  const currentMonth = now.getMonth()
+  const priorMonth = currentMonth === 0 ? 11 : currentMonth - 1
+  const priorYear = currentMonth === 0 ? currentYear - 1 : currentYear
 
   const filteredLeads = leadRows.filter((r) => {
     const d = splitDate(r.dateIn)
@@ -45,22 +89,22 @@ function computeKpis(leadRows: LeadRow[], rows: AppointmentRow[]) {
     const d = splitDate(r.dateIn)
     return d && d.year === currentYear
   })
-  const booked = filtered.filter((r) => r.callStatus && r.callStatus !== '').length
+  const bookedEligible = filtered.filter(
+    (r) => r.callStatus && r.callStatus.toLowerCase() !== 'rescheduled' && r.email && r.email !== ''
+  )
+  const booked = new Set(bookedEligible.map((r) => r.email.toLowerCase())).size
   const showed = filtered.filter((r) => r.callStatus === 'Showed').length
   const won = filtered.filter((r) => r.callOutcome === 'WON')
   const closed = won.length
   const cashCollected = won.reduce((sum, r) => sum + parseMoney(r.cashCollected), 0)
 
-  let totalDays = 0
-  let dayCount = 0
+  let totalDays = 0, dayCount = 0
   for (const r of won) {
     const di = splitDate(r.dateIn)
     const dc = splitDate(r.callDate)
     if (di && dc) {
       const msPerDay = 1000 * 60 * 60 * 24
-      const inMs = Date.UTC(di.year, di.month, di.day)
-      const callMs = Date.UTC(dc.year, dc.month, dc.day)
-      const diff = Math.round((callMs - inMs) / msPerDay)
+      const diff = Math.round((Date.UTC(dc.year, dc.month, dc.day) - Date.UTC(di.year, di.month, di.day)) / msPerDay)
       if (diff >= 0) { totalDays += diff; dayCount++ }
     }
   }
@@ -79,17 +123,48 @@ function computeKpis(leadRows: LeadRow[], rows: AppointmentRow[]) {
     if (r.callStatus === 'Showed') monthly[m].showed++
     if (r.callOutcome === 'WON') monthly[m].closed++
   }
-  const currentMonth = new Date().getMonth()
   const monthlyData = Object.values(monthly).slice(0, currentMonth + 1)
 
-  // Cash by source
   const cashBySource: Record<string, number> = { Paid: 0, Referral: 0, Organic: 0 }
   for (const r of won) {
-    const src = classifySource(r)
-    cashBySource[src] += parseMoney(r.cashCollected)
+    cashBySource[classifySource(r)] += parseMoney(r.cashCollected)
   }
 
-  return { leads, booked, showed, closed, cashCollected, avgDaysToPaid, monthlyData, cashBySource }
+  // Pipeline: active deals not yet closed (Follow Up, Deposit Made, Need To Follow Up)
+  const PIPELINE_STAGES = ['Follow Up Scheduled', 'Deposit Made', 'Need To Follow Up']
+  const pipelineRows = filtered.filter((r) => PIPELINE_STAGES.includes(r.callOutcome))
+  const pipelineCount = pipelineRows.length
+  const pipelineValue = pipelineRows.reduce((sum, r) => sum + parseMoney(r.totalPrice), 0)
+  const pipelineAvgDeal = pipelineCount > 0 ? pipelineValue / pipelineCount : 0
+
+  // Lead quality distribution by month
+  const QUALITY_TIERS = ['High Value', 'Qualified', 'So-So', 'Low Quality', 'Bad Lead'] as const
+  const qualityMonthly: Record<number, LeadQualityDataPoint> = {}
+  for (let m = 0; m < 12; m++) {
+    qualityMonthly[m] = { month: MONTH_NAMES[m], 'High Value': 0, 'Qualified': 0, 'So-So': 0, 'Low Quality': 0, 'Bad Lead': 0 }
+  }
+  for (const r of filtered) {
+    const d = splitDate(r.dateIn)
+    if (!d || !r.leadQuality) continue
+    const tier = QUALITY_TIERS.find((t) => r.leadQuality.trim() === t)
+    if (tier) qualityMonthly[d.month][tier]++
+  }
+  const qualityData = Object.values(qualityMonthly).slice(0, currentMonth + 1)
+
+  // Month-over-month deltas
+  const cur = computeMonthKpis(leadRows, rows, currentYear, currentMonth)
+  const prev = computeMonthKpis(leadRows, rows, priorYear, priorMonth)
+  const dl = `vs ${MONTH_NAMES[priorMonth]}`
+  const deltas = {
+    leads:   makeDelta(cur.leads,   prev.leads,   dl),
+    booked:  makeDelta(cur.booked,  prev.booked,  dl),
+    showed:  makeDelta(cur.showed,  prev.showed,  dl),
+    closed:  makeDelta(cur.closed,  prev.closed,  dl),
+    cash:    makeDelta(cur.cash,    prev.cash,    dl),
+    avgDays: makeDelta(cur.avgDays, prev.avgDays, dl, true),
+  }
+
+  return { leads, booked, showed, closed, cashCollected, avgDaysToPaid, monthlyData, cashBySource, deltas, pipelineCount, pipelineValue, pipelineAvgDeal, qualityData }
 }
 
 function fmt(n: number) {
@@ -104,7 +179,7 @@ export default async function OverviewPage() {
     getCeoDashboardAdSpend(),
   ])
 
-  const { leads, booked, showed, closed, cashCollected, avgDaysToPaid, monthlyData, cashBySource } = computeKpis(leadRows, rows)
+  const { leads, booked, showed, closed, cashCollected, avgDaysToPaid, monthlyData, cashBySource, deltas, pipelineCount, pipelineValue, pipelineAvgDeal, qualityData } = computeKpis(leadRows, rows)
 
   const adSpendMtd = parseMoney(adSpendRaw[0] ?? '')
   const paidLeads = leads > 0 ? leads : 1
@@ -124,13 +199,14 @@ export default async function OverviewPage() {
       <PageHeader title="Overview" />
 
       {/* Top KPI row */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-6 gap-3 mb-6">
         <KpiCard
           label="Leads"
           value={leads.toLocaleString()}
           sub={`Jan–${currentMonthName} ${currentYear}`}
           icon={Users}
           iconColor="text-teal-500"
+          delta={deltas.leads}
         />
         <KpiCard
           label="Calls Booked"
@@ -138,6 +214,7 @@ export default async function OverviewPage() {
           sub={`${((booked / leads) * 100).toFixed(1)}% of leads`}
           icon={CalendarDays}
           iconColor="text-cyan-500"
+          delta={deltas.booked}
         />
         <KpiCard
           label="Qualified Calls"
@@ -145,6 +222,7 @@ export default async function OverviewPage() {
           sub={`${showRate}% show rate`}
           icon={Phone}
           iconColor="text-green-500"
+          delta={deltas.showed}
         />
         <KpiCard
           label="Deals Closed"
@@ -152,6 +230,7 @@ export default async function OverviewPage() {
           sub={`${closeRate}% close rate`}
           icon={CheckCircle2}
           iconColor="text-emerald-500"
+          delta={deltas.closed}
         />
         <KpiCard
           label="Cash Collected"
@@ -159,6 +238,7 @@ export default async function OverviewPage() {
           sub="All sources"
           icon={DollarSign}
           iconColor="text-blue-500"
+          delta={deltas.cash}
         />
         <KpiCard
           label="Avg Days to Paid"
@@ -166,6 +246,7 @@ export default async function OverviewPage() {
           sub="Strategy mtg → paid"
           icon={Clock}
           iconColor="text-gray-400"
+          delta={deltas.avgDays}
         />
       </div>
 
@@ -181,37 +262,58 @@ export default async function OverviewPage() {
         </div>
       </div>
 
-      {/* Monthly performance chart */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mb-6">
-        <h2 className="text-base font-semibold text-gray-900">Monthly performance</h2>
-        <p className="text-sm text-gray-400 mb-4">Leads, booked calls, qualified (held) calls and closed deals</p>
-        <MonthlyChart data={monthlyData} />
+      {/* Monthly performance + Cash by source side by side */}
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="col-span-2 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+          <h2 className="text-base font-semibold text-gray-900">Monthly performance</h2>
+          <p className="text-sm text-gray-400 mb-4">Leads, booked calls, qualified (held) calls and closed deals</p>
+          <MonthlyChart data={monthlyData} />
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+          <h2 className="text-base font-semibold text-gray-900">Cash by source</h2>
+          <p className="text-sm text-gray-400 mb-3">Where revenue actually comes from</p>
+          <CashBySourceDonut data={[
+            { label: 'Referral', color: '#f97316', amount: cashBySource.Referral, pct: totalCash > 0 ? `${((cashBySource.Referral / totalCash) * 100).toFixed(1)}%` : '0%' },
+            { label: 'Paid',     color: '#0ea5e9', amount: cashBySource.Paid,     pct: totalCash > 0 ? `${((cashBySource.Paid     / totalCash) * 100).toFixed(1)}%` : '0%' },
+            { label: 'Organic',  color: '#10b981', amount: cashBySource.Organic,  pct: totalCash > 0 ? `${((cashBySource.Organic  / totalCash) * 100).toFixed(1)}%` : '0%' },
+          ]} />
+        </div>
       </div>
 
-      {/* Cash by source */}
+      {/* Pipeline value */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mb-6">
-        <h2 className="text-base font-semibold text-gray-900">Cash by source</h2>
-        <p className="text-sm text-gray-400 mb-4">Where revenue actually comes from</p>
-        <div className="space-y-3 mt-4">
-          {[
-            { label: 'Referral', color: 'bg-orange-400', amount: cashBySource.Referral },
-            { label: 'Paid',     color: 'bg-blue-400',   amount: cashBySource.Paid },
-            { label: 'Organic',  color: 'bg-green-400',  amount: cashBySource.Organic },
-          ].map(({ label, color, amount }) => (
-            <div key={label} className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className={`w-2.5 h-2.5 rounded-full ${color}`} />
-                <span className="text-sm font-medium text-gray-600">{label}</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-semibold text-gray-900">{fmt(amount)}</span>
-                <span className="text-sm text-gray-400 w-10 text-right">
-                  {totalCash > 0 ? `${((amount / totalCash) * 100).toFixed(1)}%` : '0%'}
-                </span>
-              </div>
-            </div>
-          ))}
+        <h2 className="text-base font-semibold text-gray-900">Active pipeline</h2>
+        <p className="text-sm text-gray-400 mb-4">Deals in motion — Follow Up Scheduled, Deposit Made, Need To Follow Up</p>
+        <div className="grid grid-cols-3 gap-4">
+          <KpiCard
+            label="Pipeline Deals"
+            value={pipelineCount}
+            sub="Active opportunities"
+            icon={CheckCircle2}
+            iconColor="text-amber-500"
+          />
+          <KpiCard
+            label="Pipeline Value"
+            value={fmt(pipelineValue)}
+            sub="Total contract value"
+            icon={DollarSign}
+            iconColor="text-teal-500"
+          />
+          <KpiCard
+            label="Avg Deal Size"
+            value={fmt(pipelineAvgDeal)}
+            sub="In pipeline"
+            icon={DollarSign}
+            iconColor="text-cyan-500"
+          />
         </div>
+      </div>
+
+      {/* Lead quality distribution */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mb-6">
+        <h2 className="text-base font-semibold text-gray-900">Lead quality distribution</h2>
+        <p className="text-sm text-gray-400 mb-4">Monthly breakdown by lead quality tier — shows if ad quality is improving</p>
+        <LeadQualityChart data={qualityData} />
       </div>
     </div>
   )
