@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { Suspense } from 'react'
-import { getLeads, getAppointments, getCeoDashboardAdSpend } from '@/lib/sheets'
+import { getLeads, getAppointments, getCeoDashboard } from '@/lib/sheets'
 import { getDateRange, getPriorRange, inRange, type DateRangePreset } from '@/lib/dateRange'
 import KpiCard from '@/components/KpiCard'
 import MonthlyChart from '@/components/MonthlyChart'
@@ -13,9 +13,10 @@ import type { LeadQualityDataPoint } from '@/components/LeadQualityChart'
 import type { CashTrendDataPoint } from '@/components/CashTrendChart'
 import type { MonthlyDataPoint } from '@/components/MonthlyChart'
 import type { AppointmentRow, LeadRow } from '@/types/appointments'
-import { Users, CalendarDays, Phone, CheckCircle2, DollarSign, Clock } from 'lucide-react'
+import { Users, CalendarDays, Phone, CheckCircle2, DollarSign, Clock, PhoneOff, XCircle, TrendingUp } from 'lucide-react'
 
-const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const MONTH_NAMES      = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const FULL_MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
 function parseMoney(val: string): number {
   if (!val) return 0
@@ -70,7 +71,10 @@ function computeRangeKpis(leadRows: LeadRow[], rows: AppointmentRow[], range: Re
   }
   const avgDays = dayCount > 0 ? parseFloat((totalDays / dayCount).toFixed(1)) : 0
 
-  return { leads, booked, showed, closed, cash, avgDays, won, filtered }
+  const noShows  = filtered.filter((r) => r.callStatus === 'No Show').length
+  const cancelled = filtered.filter((r) => r.callStatus === 'Cancelled').length
+
+  return { leads, booked, showed, closed, cash, avgDays, won, filtered, noShows, cancelled }
 }
 
 // Generate weeks of the current month (Sun-start, matching sheet formula)
@@ -123,15 +127,15 @@ export default async function OverviewPage({
   const now = new Date()
   const currentYear = now.getFullYear()
   const currentMonth = now.getMonth()
-  const currentMonthName = MONTH_NAMES[currentMonth]
+  const currentMonthName = FULL_MONTH_NAMES[currentMonth]
 
   const range      = getDateRange(preset, now)
   const priorRange = getPriorRange(preset, now)
 
-  const [leadRows, rows, adSpendRaw] = await Promise.all([
+  const [leadRows, rows, ceoDash] = await Promise.all([
     getLeads(),
     getAppointments(),
-    getCeoDashboardAdSpend(),
+    getCeoDashboard(),
   ])
 
   // KPIs for selected range
@@ -154,39 +158,29 @@ export default async function OverviewPage({
   const showRate  = booked > 0 ? ((showed / booked) * 100).toFixed(1) : '0'
   const closeRate = showed > 0 ? ((closed / showed) * 100).toFixed(1) : '0'
 
-  // Ad spend tiles always use current-month data, never the date picker range
-  const thisMonthRange = getDateRange('this_month', now)
-  const mtd = computeRangeKpis(leadRows, rows, thisMonthRange)
-  const adSpendMtd   = parseMoney(adSpendRaw[0] ?? '')
-  const costPerLead  = mtd.leads  > 0 ? adSpendMtd / mtd.leads  : 0
-  const costPerBooked= mtd.booked > 0 ? adSpendMtd / mtd.booked : 0
-  const costPerQual  = mtd.showed > 0 ? adSpendMtd / mtd.showed : 0
+  // "This Month at a Glance" — pull from CEO Dashboard sheet (always current month)
+  // Monthly rows: index 0 = January, so currentMonth index maps directly
+  const ceoDashMonth = ceoDash.monthly[currentMonth] ?? {
+    adSpend: 0, leads: 0, booked: 0, showed: 0, noShows: 0, cancelled: 0,
+    showRate: '0%', dealsWon: 0, revenue: 0, avgDeal: 0, cpl: 0, costPerShow: 0, closeRate: '0%', period: '',
+  }
+  const adSpendMtd    = ceoDash.weekly.reduce((sum, w) => sum + w.adSpend, 0)
+  const costPerLead   = ceoDashMonth.cpl
+  const costPerBooked = ceoDashMonth.booked > 0 ? adSpendMtd / ceoDashMonth.booked : 0
 
-  // Weekly breakdown for current month (from appointment data)
-  const weeks = getMonthWeeks(currentYear, currentMonth, now)
-  const weeklyRows = weeks.map((w) => {
-    const wLeads = leadRows.filter((r) => {
-      const d = splitDate(r.dateIn)
-      if (!d) return false
-      const ts = Date.UTC(d.year, d.month, d.day)
-      return ts >= w.start && ts <= w.end
-    }).length
-    const wAppts = rows.filter((r) => {
-      const d = splitDate(r.dateIn)
-      if (!d) return false
-      const ts = Date.UTC(d.year, d.month, d.day)
-      return ts >= w.start && ts <= w.end
-    })
-    const wBookedSet = new Set(
-      wAppts
-        .filter((r) => r.callStatus && r.callStatus.toLowerCase() !== 'rescheduled' && r.email)
-        .map((r) => r.email.toLowerCase())
-    )
-    const wBooked = wBookedSet.size
-    const wQual   = wAppts.filter((r) => r.callStatus === 'Showed').length
-    const wClosed = wAppts.filter((r) => r.callOutcome === 'WON').length
-    return { label: w.label, leads: wLeads, booked: wBooked, qualified: wQual, closed: wClosed }
-  })
+  // Weekly breakdown from CEO Dashboard sheet directly
+  const weeklyRows = ceoDash.weekly.map((w) => ({
+    label:     w.period,
+    adSpend:   w.adSpend,
+    leads:     w.leads,
+    booked:    w.booked,
+    showed:    w.showed,
+    noShows:   w.noShows,
+    cancelled: w.cancelled,
+    showRate:  w.showRate,
+    closed:    w.dealsWon,
+    revenue:   w.revenue,
+  }))
 
   // Always show full-year trend charts regardless of range picker
   const ytdRows = rows.filter((r) => {
@@ -268,12 +262,17 @@ export default async function OverviewPage({
         <h2 className="text-base font-semibold text-gray-900">This Month at a Glance</h2>
         <p className="text-sm text-gray-400 mb-4">{currentMonthName} {currentYear}</p>
 
-        {/* MTD efficiency tiles */}
-        <div className="grid grid-cols-4 gap-3 mb-5">
-          <KpiCard label="Ad Spend (MTD)" value={fmt(adSpendMtd)}    sub={`${currentMonthName} ${currentYear}`} icon={DollarSign}   iconColor="text-blue-500" />
-          <KpiCard label="Cost / Lead"    value={fmt(costPerLead)}   sub={`${mtd.leads} leads`}                 icon={Users}        iconColor="text-teal-500" />
-          <KpiCard label="Cost / Booked"  value={fmt(costPerBooked)} sub={`${mtd.booked} booked`}               icon={CalendarDays} iconColor="text-cyan-500" />
-          <KpiCard label="Cost / Qualified" value={fmt(costPerQual)} sub={`${mtd.showed} qualified`}            icon={Phone}        iconColor="text-green-500" />
+        {/* MTD tiles — 9 compact cards in a single row */}
+        <div className="grid grid-cols-9 gap-2 mb-5">
+          <KpiCard compact label="Ad Spend (MTD)"  value={fmt(adSpendMtd)}                        sub={`${currentMonthName} ${currentYear}`} icon={DollarSign}   iconColor="text-blue-500"    valueColor="text-blue-600" />
+          <KpiCard compact label="Total Leads"     value={ceoDashMonth.leads.toLocaleString()}     sub={`${currentMonthName} ${currentYear}`} icon={Users}        iconColor="text-teal-500"    valueColor="text-teal-600" />
+          <KpiCard compact label="Cost / Lead"     value={fmt(costPerLead)}                        sub={`${ceoDashMonth.leads} leads`}        icon={DollarSign}   iconColor="text-teal-500"    valueColor="text-teal-600" />
+          <KpiCard compact label="Calls Booked"    value={ceoDashMonth.booked.toLocaleString()}    sub={`${currentMonthName} ${currentYear}`} icon={CalendarDays} iconColor="text-cyan-500"    valueColor="text-cyan-600" />
+          <KpiCard compact label="Cost / Booked"   value={fmt(costPerBooked)}                      sub={`${ceoDashMonth.booked} booked`}      icon={DollarSign}   iconColor="text-cyan-500"    valueColor="text-cyan-600" />
+          <KpiCard compact label="Calls Showed"    value={ceoDashMonth.showed.toLocaleString()}    sub={`${currentMonthName} ${currentYear}`} icon={Phone}        iconColor="text-green-500"   valueColor="text-green-600" />
+          <KpiCard compact label="No Shows"        value={ceoDashMonth.noShows.toLocaleString()}   sub={`${currentMonthName} ${currentYear}`} icon={PhoneOff}     iconColor="text-red-400"     valueColor="text-red-500" />
+          <KpiCard compact label="Calls Cancelled" value={ceoDashMonth.cancelled.toLocaleString()} sub={`${currentMonthName} ${currentYear}`} icon={XCircle}      iconColor="text-gray-400"    valueColor="text-gray-600" />
+          <KpiCard compact label="Show Rate"       value={ceoDashMonth.showRate}                   sub="Showed ÷ Booked"                      icon={TrendingUp}   iconColor="text-emerald-500" valueColor="text-emerald-600" />
         </div>
 
         {/* Weekly table */}
@@ -281,24 +280,30 @@ export default async function OverviewPage({
           <thead>
             <tr className="border-b border-gray-100">
               <th className="text-left py-2 text-gray-400 font-medium">Week</th>
+              <th className="text-right py-2 text-gray-400 font-medium">Ad Spend</th>
               <th className="text-right py-2 text-gray-400 font-medium">Leads</th>
               <th className="text-right py-2 text-gray-400 font-medium">Booked</th>
-              <th className="text-right py-2 text-gray-400 font-medium">Qualified</th>
-              <th className="text-right py-2 text-gray-400 font-medium">Closed</th>
-              <th className="text-right py-2 text-gray-400 font-medium">Book Rate</th>
+              <th className="text-right py-2 text-gray-400 font-medium">Showed</th>
+              <th className="text-right py-2 text-gray-400 font-medium">No Shows</th>
+              <th className="text-right py-2 text-gray-400 font-medium">Cancelled</th>
               <th className="text-right py-2 text-gray-400 font-medium">Show Rate</th>
+              <th className="text-right py-2 text-gray-400 font-medium">Deals Won</th>
+              <th className="text-right py-2 text-gray-400 font-medium">Revenue</th>
             </tr>
           </thead>
           <tbody>
             {weeklyRows.map((w) => (
               <tr key={w.label} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                 <td className="py-2 text-teal-600 font-medium text-xs">{w.label}</td>
+                <td className="py-2 text-right text-gray-700">{w.adSpend > 0 ? fmt(w.adSpend) : '—'}</td>
                 <td className="py-2 text-right text-gray-700">{w.leads}</td>
                 <td className="py-2 text-right text-gray-700">{w.booked}</td>
-                <td className="py-2 text-right text-gray-700">{w.qualified}</td>
+                <td className="py-2 text-right text-gray-700">{w.showed}</td>
+                <td className="py-2 text-right text-red-400">{w.noShows}</td>
+                <td className="py-2 text-right text-gray-400">{w.cancelled}</td>
+                <td className="py-2 text-right text-gray-500">{w.showRate}</td>
                 <td className="py-2 text-right text-gray-700">{w.closed}</td>
-                <td className="py-2 text-right text-gray-500">{w.leads > 0 ? `${((w.booked / w.leads) * 100).toFixed(0)}%` : '—'}</td>
-                <td className="py-2 text-right text-gray-500">{w.booked > 0 ? `${((w.qualified / w.booked) * 100).toFixed(0)}%` : '—'}</td>
+                <td className="py-2 text-right text-gray-700">{w.revenue > 0 ? fmt(w.revenue) : '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -309,12 +314,12 @@ export default async function OverviewPage({
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="col-span-2 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
           <h2 className="text-base font-semibold text-gray-900">Monthly performance</h2>
-          <p className="text-sm text-gray-400 mb-4">Jan–{currentMonthName} {currentYear} — leads, booked, qualified, closed</p>
+          <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — leads, booked, qualified, closed</p>
           <MonthlyChart data={monthlyData} />
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
           <h2 className="text-base font-semibold text-gray-900">Cash by source</h2>
-          <p className="text-sm text-gray-400 mb-3">Jan–{currentMonthName} {currentYear}</p>
+          <p className="text-sm text-gray-400 mb-3">January–{currentMonthName} {currentYear}</p>
           <CashBySourceDonut data={[
             { label: 'Referral', color: '#f97316', amount: cashBySource.Referral, pct: totalCash > 0 ? `${((cashBySource.Referral / totalCash) * 100).toFixed(1)}%` : '0%' },
             { label: 'Paid',     color: '#0ea5e9', amount: cashBySource.Paid,     pct: totalCash > 0 ? `${((cashBySource.Paid     / totalCash) * 100).toFixed(1)}%` : '0%' },
@@ -337,14 +342,14 @@ export default async function OverviewPage({
       {/* Cash collected trend */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mb-6">
         <h2 className="text-base font-semibold text-gray-900">Cash collected trend</h2>
-        <p className="text-sm text-gray-400 mb-4">Jan–{currentMonthName} {currentYear} — monthly cash, all sources combined</p>
+        <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — monthly cash, all sources combined</p>
         <CashTrendChart data={cashTrend} />
       </div>
 
       {/* Lead quality distribution */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mb-6">
         <h2 className="text-base font-semibold text-gray-900">Lead quality distribution</h2>
-        <p className="text-sm text-gray-400 mb-4">Jan–{currentMonthName} {currentYear} — monthly breakdown by lead quality tier</p>
+        <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — monthly breakdown by lead quality tier</p>
         <LeadQualityChart data={qualityData} />
       </div>
     </div>

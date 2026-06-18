@@ -13,10 +13,12 @@ interface KpiCardProps {
   sub?: string
   icon?: LucideIcon
   iconColor?: string
+  valueColor?: string
   delta?: KpiCardDelta
+  compact?: boolean
 }
 
-export default function KpiCard({ label, value, sub, icon: Icon, iconColor = 'text-teal-500', delta }: KpiCardProps) {
+export default function KpiCard({ label, value, sub, icon: Icon, iconColor = 'text-teal-500', valueColor, delta, compact }: KpiCardProps) {
   let deltaEl = null
   if (delta && delta.diff !== 0) {
     const isPositive = delta.invert ? delta.diff < 0 : delta.diff > 0
@@ -35,13 +37,13 @@ export default function KpiCard({ label, value, sub, icon: Icon, iconColor = 'te
   }
 
   return (
-    <div className="rounded-xl bg-white border border-gray-200 px-4 py-3 shadow-sm">
+    <div className={`rounded-xl bg-white border border-gray-200 shadow-sm ${compact ? 'px-3 py-2' : 'px-4 py-3'}`}>
       <div className="flex items-start justify-between">
         <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{label}</p>
-        {Icon && <Icon className={`w-3.5 h-3.5 ${iconColor} shrink-0`} />}
+        {Icon && <Icon className={`${compact ? 'w-3 h-3' : 'w-3.5 h-3.5'} ${iconColor} shrink-0`} />}
       </div>
-      <p className="mt-1.5 text-2xl font-bold text-gray-900">{value}</p>
-      {sub && <p className="mt-0.5 text-[11px] text-gray-400">{sub}</p>}
+      <p className={`mt-1 font-bold ${valueColor ?? 'text-gray-900'} ${compact ? 'text-lg' : 'text-2xl mt-1.5'}`}>{value}</p>
+      {sub && <p className="mt-0.5 text-[10px] text-gray-400">{sub}</p>}
       {deltaEl && <div className="mt-1.5 pt-1.5 border-t border-gray-100">{deltaEl}</div>}
     </div>
   )
