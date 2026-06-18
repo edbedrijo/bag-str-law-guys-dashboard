@@ -5,8 +5,10 @@ import KpiCard from '@/components/KpiCard'
 import MonthlyChart from '@/components/MonthlyChart'
 import CashBySourceDonut from '@/components/CashBySourceDonut'
 import LeadQualityChart from '@/components/LeadQualityChart'
+import CashTrendChart from '@/components/CashTrendChart'
 import PageHeader from '@/components/PageHeader'
 import type { LeadQualityDataPoint } from '@/components/LeadQualityChart'
+import type { CashTrendDataPoint } from '@/components/CashTrendChart'
 import type { MonthlyDataPoint } from '@/components/MonthlyChart'
 import type { AppointmentRow, LeadRow } from '@/types/appointments'
 import { Users, CalendarDays, Phone, CheckCircle2, DollarSign, Clock } from 'lucide-react'
@@ -151,6 +153,12 @@ function computeKpis(leadRows: LeadRow[], rows: AppointmentRow[]) {
   }
   const qualityData = Object.values(qualityMonthly).slice(0, currentMonth + 1)
 
+  // Cash collected trend by month
+  const cashTrend: CashTrendDataPoint[] = Array.from({ length: currentMonth + 1 }, (_, m) => ({
+    month: MONTH_NAMES[m],
+    cash: won.filter((r) => { const d = splitDate(r.callDate || r.dateIn); return d && d.month === m }).reduce((sum, r) => sum + parseMoney(r.cashCollected), 0),
+  }))
+
   // Month-over-month deltas
   const cur = computeMonthKpis(leadRows, rows, currentYear, currentMonth)
   const prev = computeMonthKpis(leadRows, rows, priorYear, priorMonth)
@@ -164,7 +172,7 @@ function computeKpis(leadRows: LeadRow[], rows: AppointmentRow[]) {
     avgDays: makeDelta(cur.avgDays, prev.avgDays, dl, true),
   }
 
-  return { leads, booked, showed, closed, cashCollected, avgDaysToPaid, monthlyData, cashBySource, deltas, pipelineCount, pipelineValue, pipelineAvgDeal, qualityData }
+  return { leads, booked, showed, closed, cashCollected, avgDaysToPaid, monthlyData, cashBySource, deltas, pipelineCount, pipelineValue, pipelineAvgDeal, qualityData, cashTrend }
 }
 
 function fmt(n: number) {
@@ -179,7 +187,7 @@ export default async function OverviewPage() {
     getCeoDashboardAdSpend(),
   ])
 
-  const { leads, booked, showed, closed, cashCollected, avgDaysToPaid, monthlyData, cashBySource, deltas, pipelineCount, pipelineValue, pipelineAvgDeal, qualityData } = computeKpis(leadRows, rows)
+  const { leads, booked, showed, closed, cashCollected, avgDaysToPaid, monthlyData, cashBySource, deltas, pipelineCount, pipelineValue, pipelineAvgDeal, qualityData, cashTrend } = computeKpis(leadRows, rows)
 
   const adSpendMtd = parseMoney(adSpendRaw[0] ?? '')
   const paidLeads = leads > 0 ? leads : 1
@@ -307,6 +315,13 @@ export default async function OverviewPage() {
             iconColor="text-cyan-500"
           />
         </div>
+      </div>
+
+      {/* Cash collected trend */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mb-6">
+        <h2 className="text-base font-semibold text-gray-900">Cash collected trend</h2>
+        <p className="text-sm text-gray-400 mb-4">Monthly cash, all sources combined</p>
+        <CashTrendChart data={cashTrend} />
       </div>
 
       {/* Lead quality distribution */}
