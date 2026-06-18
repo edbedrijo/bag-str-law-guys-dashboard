@@ -263,8 +263,8 @@ export default async function OverviewPage({
 
       {/* Ad Spend — current month weekly breakdown */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mb-6">
-        <h2 className="text-base font-semibold text-gray-900">{currentMonthName} {currentYear} breakdown</h2>
-        <p className="text-sm text-gray-400 mb-4">Weekly activity + month-to-date paid media spend (Facebook ads)</p>
+        <h2 className="text-base font-semibold text-gray-900">This Month at a Glance</h2>
+        <p className="text-sm text-gray-400 mb-4">{currentMonthName} {currentYear}</p>
 
         {/* MTD efficiency tiles */}
         <div className="grid grid-cols-4 gap-3 mb-5">
