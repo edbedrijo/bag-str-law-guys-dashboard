@@ -106,11 +106,11 @@ Data is sourced from the STR Law Guys Google Sheets Appointments tab and GHL CRM
 - RLS enabled on all database tables; every query scoped by org/user
 
 ## Git Workflow — ALWAYS follow this order
-1. All changes go to `dev` branch first — NEVER commit directly to `master`
-2. Push to `dev` and let Ed verify locally or on GitHub
-3. Only merge `dev` → `master` (via PR) when Ed explicitly says "publish" or "push to main"
-4. `master` is connected to Vercel production — every merge triggers a deploy and uses a Vercel build credit
-5. To save Vercel build limits: batch multiple fixes into one `dev` → `master` merge instead of merging every small fix immediately
+1. Commit changes and push to `dev` branch — NEVER commit directly to `master`
+2. After pushing, tell Ed: **"Run `npm run dev` and open `http://localhost:3000` to verify"**
+3. If Ed says it looks good, immediately merge `dev` → `master` and push — no extra confirmation needed
+4. `master` is connected to Vercel production — every push triggers a deploy
+5. Always tell Ed what to look at when verifying (which page, which section, what changed)
 
 ## Definition of Done
 1. Behavior matches the request
