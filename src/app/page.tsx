@@ -112,8 +112,7 @@ function getMonthWeeks(year: number, month: number, today: Date) {
 }
 
 function fmt(n: number) {
-  if (n >= 1000) return `$${(n / 1000).toFixed(1)}k`
-  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 export default async function OverviewPage({
