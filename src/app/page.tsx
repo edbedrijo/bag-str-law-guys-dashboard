@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { Suspense } from 'react'
-import { getLeads, getAppointments, getCeoDashboard } from '@/lib/sheets'
+import { getLeads, getAppointments, getCeoDashboard, getClosedDeals } from '@/lib/sheets'
 import { getMonthlyAdSpend } from '@/lib/ghl'
 import { getDateRange, getPriorRange, inRange, type DateRangePreset } from '@/lib/dateRange'
 import KpiCard from '@/components/KpiCard'
@@ -9,12 +9,15 @@ import MonthlyChart from '@/components/MonthlyChart'
 import CashBySourceDonut from '@/components/CashBySourceDonut'
 import LeadQualityChart from '@/components/LeadQualityChart'
 import CashTrendChart from '@/components/CashTrendChart'
+import RevenueTrendChart from '@/components/RevenueTrendChart'
+import ConversionFunnel from '@/components/ConversionFunnel'
 import DateRangePicker from '@/components/DateRangePicker'
 import type { LeadQualityDataPoint } from '@/components/LeadQualityChart'
 import type { CashTrendDataPoint } from '@/components/CashTrendChart'
 import type { MonthlyDataPoint } from '@/components/MonthlyChart'
+import type { RevenueTrendPoint } from '@/components/RevenueTrendChart'
 import type { AppointmentRow, LeadRow } from '@/types/appointments'
-import { Users, CalendarDays, Phone, CheckCircle2, DollarSign, Clock, PhoneOff, XCircle, TrendingUp } from 'lucide-react'
+import { Users, CalendarDays, Phone, CheckCircle2, DollarSign, TrendingUp, Trophy } from 'lucide-react'
 
 const MONTH_NAMES      = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const FULL_MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
@@ -41,9 +44,11 @@ function classifySource(row: AppointmentRow): 'Paid' | 'Referral' | 'Organic' {
   return 'Organic'
 }
 
+// Returns null when prior is zero — hides delta row in that case
 function makeDelta(current: number, prior: number, label: string, invert = false) {
+  if (prior === 0) return undefined
   const diff = current - prior
-  const pct = prior > 0 ? (diff / prior) * 100 : 0
+  const pct = (diff / prior) * 100
   return { diff, pct, label, invert }
 }
 
@@ -55,49 +60,31 @@ function computeRangeKpis(leadRows: LeadRow[], rows: AppointmentRow[], range: Re
   const bookedEligible = filtered.filter(
     (r) => r.callStatus && r.callStatus.toLowerCase() !== 'rescheduled' && r.email && r.email !== ''
   )
-  const booked = new Set(bookedEligible.map((r) => r.email.toLowerCase())).size
-  const showed = filtered.filter((r) => r.callStatus === 'Showed').length
-  const won = filtered.filter((r) => r.callOutcome === 'WON')
-  const closed = won.length
-  const cash = won.reduce((sum, r) => sum + parseMoney(r.cashCollected), 0)
-
-  let totalDays = 0, dayCount = 0
-  for (const r of won) {
-    const di = splitDate(r.dateIn)
-    const dc = splitDate(r.callDate)
-    if (di && dc) {
-      const diff = Math.round((Date.UTC(dc.year, dc.month, dc.day) - Date.UTC(di.year, di.month, di.day)) / 86400000)
-      if (diff >= 0) { totalDays += diff; dayCount++ }
-    }
-  }
-  const avgDays = dayCount > 0 ? parseFloat((totalDays / dayCount).toFixed(1)) : 0
-
+  const booked   = new Set(bookedEligible.map((r) => r.email.toLowerCase())).size
+  const showed   = filtered.filter((r) => r.callStatus === 'Showed').length
+  const cash     = filtered.filter((r) => r.callOutcome === 'WON').reduce((sum, r) => sum + parseMoney(r.cashCollected), 0)
   const noShows  = filtered.filter((r) => r.callStatus === 'No Show').length
   const cancelled = filtered.filter((r) => r.callStatus === 'Cancelled').length
 
-  return { leads, booked, showed, closed, cash, avgDays, won, filtered, noShows, cancelled }
+  return { leads, booked, showed, cash, filtered, noShows, cancelled }
 }
 
 // Generate weeks of the current month (Sun-start, matching sheet formula)
 function getMonthWeeks(year: number, month: number, today: Date) {
-  const firstMs = Date.UTC(year, month, 1)
-  const first = new Date(firstMs)
-  const dow = first.getUTCDay() // 0=Sun
-  // Week 1 ends on the first Saturday of the month (or last day if earlier)
+  const first = new Date(Date.UTC(year, month, 1))
+  const dow   = first.getUTCDay()
   const lastDayOfMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
   const todayMs = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
 
   const weeks: { label: string; start: number; end: number }[] = []
   let weekStart = 1
-  // First week ends on Saturday = day 1 + (6 - dow) or end of month
-  let weekEnd = 1 + (6 - dow)
-  let weekNum = 1
+  let weekEnd   = 1 + (6 - dow)
+  let weekNum   = 1
 
   while (weekStart <= lastDayOfMonth) {
     const actualEnd = Math.min(weekEnd, lastDayOfMonth)
-    const startMs = Date.UTC(year, month, weekStart)
-    const endMs   = Date.UTC(year, month, actualEnd)
-    // Only include weeks that have started
+    const startMs   = Date.UTC(year, month, weekStart)
+    const endMs     = Date.UTC(year, month, actualEnd)
     if (startMs <= todayMs) {
       weeks.push({
         label: `Week ${weekNum} (${MONTH_NAMES[month]} ${weekStart}–${actualEnd})`,
@@ -110,6 +97,12 @@ function getMonthWeeks(year: number, month: number, today: Date) {
     weekNum++
   }
   return weeks
+}
+
+function dateToMs(dateStr: string): number {
+  const d = splitDate(dateStr)
+  if (!d) return 0
+  return Date.UTC(d.year, d.month, d.day)
 }
 
 function fmt(n: number) {
@@ -125,50 +118,56 @@ export default async function OverviewPage({
   const preset = (params?.range ?? 'this_year') as DateRangePreset
 
   const now = new Date()
-  const currentYear = now.getFullYear()
+  const currentYear  = now.getFullYear()
   const currentMonth = now.getMonth()
   const currentMonthName = FULL_MONTH_NAMES[currentMonth]
 
   const range      = getDateRange(preset, now)
   const priorRange = getPriorRange(preset, now)
 
-  const [leadRows, rows, ceoDash, ghlAdSpend] = await Promise.all([
+  const [leadRows, rows, ceoDash, ghlAdSpend, closedDeals] = await Promise.all([
     getLeads(),
     getAppointments(),
     getCeoDashboard(),
     getMonthlyAdSpend(currentYear, currentMonth),
+    getClosedDeals(),
   ])
 
-  // KPIs for selected range
+  // ── Top tile KPIs from Appointments tab ─────────────────────────────────────
   const cur  = computeRangeKpis(leadRows, rows, range)
   const prev = computeRangeKpis(leadRows, rows, priorRange)
 
-  const { leads, booked, showed, closed, cash: cashCollected, avgDays, won, filtered } = cur
+  const { leads, booked, showed, cash: cashCollected } = cur
 
-  const avgDaysToPaid = avgDays > 0 ? avgDays.toFixed(1) : '0'
+  const showRate = booked > 0 ? ((showed / booked) * 100).toFixed(1) : '0'
+
+  // ── Top tile KPIs from Closed Deals sheet ───────────────────────────────────
+  const closedInRange       = closedDeals.filter((d) => inRange(d.intakeDate, range, splitDate))
+  const closedDealsInRange  = closedInRange.length
+  const totalRevenueInRange = closedInRange.reduce((sum, d) => sum + parseMoney(d.amount), 0)
+
+  const prevClosedInRange      = closedDeals.filter((d) => inRange(d.intakeDate, priorRange, splitDate))
+  const prevClosedDealsInRange = prevClosedInRange.length
+  const prevTotalRevenue       = prevClosedInRange.reduce((sum, d) => sum + parseMoney(d.amount), 0)
+
+  const closeRateVal = showed > 0 ? ((closedDealsInRange / showed) * 100).toFixed(1) : '0'
+
   const dl = priorRange.label
   const deltas = {
-    leads:   makeDelta(cur.leads,   prev.leads,   dl),
-    booked:  makeDelta(cur.booked,  prev.booked,  dl),
-    showed:  makeDelta(cur.showed,  prev.showed,  dl),
-    closed:  makeDelta(cur.closed,  prev.closed,  dl),
-    cash:    makeDelta(cur.cash,    prev.cash,    dl),
-    avgDays: makeDelta(cur.avgDays, prev.avgDays, dl, true),
+    leads:        makeDelta(cur.leads,          prev.leads,          dl),
+    booked:       makeDelta(cur.booked,         prev.booked,         dl),
+    showed:       makeDelta(cur.showed,         prev.showed,         dl),
+    dealsClosed:  makeDelta(closedDealsInRange, prevClosedDealsInRange, dl),
+    totalRevenue: makeDelta(totalRevenueInRange, prevTotalRevenue,    dl),
+    cash:         makeDelta(cur.cash,           prev.cash,            dl),
   }
 
-  const showRate  = booked > 0 ? ((showed / booked) * 100).toFixed(1) : '0'
-  const closeRate = showed > 0 ? ((closed / showed) * 100).toFixed(1) : '0'
-
-  // "This Month at a Glance" — pull from CEO Dashboard sheet (always current month)
-  // Monthly rows: index 0 = January, so currentMonth index maps directly
-  const ceoDashMonth = ceoDash.monthly[currentMonth] ?? {
-    adSpend: 0, leads: 0, booked: 0, showed: 0, noShows: 0, cancelled: 0,
-    showRate: '0%', dealsWon: 0, revenue: 0, avgDeal: 0, cpl: 0, costPerShow: 0, closeRate: '0%', period: '',
-  }
-  // Ad spend from GHL Facebook reporting API (daily grouped, bucketed into dashboard weeks)
+  // ── This Month at a Glance ──────────────────────────────────────────────────
   const monthWeeks = getMonthWeeks(currentYear, currentMonth, now)
-  const ghlSpendByWeek: number[] = monthWeeks.map(({ start, end }) => {
-    return ghlAdSpend.daily.reduce((sum, d) => {
+
+  // GHL spend bucketed by week
+  const ghlSpendByWeek: number[] = monthWeeks.map(({ start, end }) =>
+    ghlAdSpend.daily.reduce((sum, d) => {
       const ms = Date.UTC(
         parseInt(d.date.slice(0, 4)),
         parseInt(d.date.slice(5, 7)) - 1,
@@ -176,32 +175,80 @@ export default async function OverviewPage({
       )
       return ms >= start && ms <= end ? sum + d.spend : sum
     }, 0)
+  )
+
+  const adSpendMtd = ghlAdSpend.totalSpend
+
+  // MTD leads + booked from Appointments (current month, for live cost calculations)
+  const mtdStart = Date.UTC(currentYear, currentMonth, 1)
+  const mtdEnd   = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
+  const mtdLeadRows = leadRows.filter((r) => { const ms = dateToMs(r.dateIn); return ms >= mtdStart && ms <= mtdEnd })
+  const mtdApptRows = rows.filter((r) => { const ms = dateToMs(r.dateIn); return ms >= mtdStart && ms <= mtdEnd })
+  const mtdLeads  = mtdLeadRows.length
+  const mtdBooked = new Set(
+    mtdApptRows
+      .filter((r) => r.callStatus && r.callStatus.toLowerCase() !== 'rescheduled' && r.email)
+      .map((r) => r.email.toLowerCase())
+  ).size
+  const mtdShowed = mtdApptRows.filter((r) => r.callStatus === 'Showed').length
+
+  const costPerLead   = mtdLeads  > 0 ? adSpendMtd / mtdLeads  : 0
+  const costPerBooked = mtdBooked > 0 ? adSpendMtd / mtdBooked : 0
+  const mtdShowRate   = mtdBooked > 0 ? `${((mtdShowed / mtdBooked) * 100).toFixed(2)}%` : '0%'
+
+  // MTD Deals Won from Closed Deals sheet
+  const mtdDealsWon = closedDeals.filter((d) => {
+    const ms = dateToMs(d.intakeDate)
+    return ms >= mtdStart && ms <= mtdEnd
+  }).length
+
+  // ── Weekly table rows ───────────────────────────────────────────────────────
+  const weeklyRows = ceoDash.weekly.map((w, i) => {
+    const week = monthWeeks[i]
+
+    // Deals Won + Revenue from Closed Deals sheet matched by intake date
+    const weekDeals = week
+      ? closedDeals.filter((d) => { const ms = dateToMs(d.intakeDate); return ms >= week.start && ms <= week.end })
+      : []
+    const dealsWon  = weekDeals.length
+    const revenue   = weekDeals.reduce((sum, d) => sum + parseMoney(d.amount), 0)
+
+    // Show rate computed live
+    const sr = w.booked > 0 ? `${((w.showed / w.booked) * 100).toFixed(2)}%` : '0%'
+
+    return {
+      label:     w.period,
+      adSpend:   ghlSpendByWeek[i] ?? 0,
+      leads:     w.leads,
+      booked:    w.booked,
+      showed:    w.showed,
+      noShows:   w.noShows,
+      cancelled: w.cancelled,
+      showRate:  sr,
+      dealsWon,
+      revenue,
+    }
   })
 
-  const adSpendMtd    = ghlAdSpend.totalSpend
-  const costPerLead   = ceoDashMonth.leads > 0 ? adSpendMtd / ceoDashMonth.leads : 0
-  const costPerBooked = ceoDashMonth.booked > 0 ? adSpendMtd / ceoDashMonth.booked : 0
+  // Totals row
+  const totals = weeklyRows.reduce(
+    (acc, w) => ({
+      adSpend:   acc.adSpend   + w.adSpend,
+      leads:     acc.leads     + w.leads,
+      booked:    acc.booked    + w.booked,
+      showed:    acc.showed    + w.showed,
+      noShows:   acc.noShows   + w.noShows,
+      cancelled: acc.cancelled + w.cancelled,
+      dealsWon:  acc.dealsWon  + w.dealsWon,
+      revenue:   acc.revenue   + w.revenue,
+    }),
+    { adSpend: 0, leads: 0, booked: 0, showed: 0, noShows: 0, cancelled: 0, dealsWon: 0, revenue: 0 }
+  )
+  const totalsShowRate = totals.booked > 0 ? `${((totals.showed / totals.booked) * 100).toFixed(2)}%` : '0%'
 
-  // Weekly breakdown — leads/booked/etc from CEO Dashboard sheet; spend from GHL daily bucketed
-  const weeklyRows = ceoDash.weekly.map((w, i) => ({
-    label:     w.period,
-    adSpend:   ghlSpendByWeek[i] ?? 0,
-    leads:     w.leads,
-    booked:    w.booked,
-    showed:    w.showed,
-    noShows:   w.noShows,
-    cancelled: w.cancelled,
-    showRate:  w.showRate,
-    closed:    w.dealsWon,
-    revenue:   w.revenue,
-  }))
-
-  // Always show full-year trend charts regardless of range picker
-  const ytdRows = rows.filter((r) => {
-    const d = splitDate(r.dateIn)
-    return d && d.year === currentYear
-  })
-  const ytdWon = ytdRows.filter((r) => r.callOutcome === 'WON')
+  // ── Charts (full-year, ignores date range picker) ───────────────────────────
+  const ytdRows = rows.filter((r) => { const d = splitDate(r.dateIn); return d && d.year === currentYear })
+  const ytdWon  = ytdRows.filter((r) => r.callOutcome === 'WON')
 
   const monthly: Record<number, MonthlyDataPoint> = {}
   for (let m = 0; m < 12; m++) {
@@ -213,22 +260,71 @@ export default async function OverviewPage({
     monthly[d.month].leads++
     if (r.callStatus) monthly[d.month].booked++
     if (r.callStatus === 'Showed') monthly[d.month].showed++
-    if (r.callOutcome === 'WON') monthly[d.month].closed++
+    if (r.callOutcome === 'WON')   monthly[d.month].closed++
   }
   const monthlyData = Object.values(monthly).slice(0, currentMonth + 1)
 
-  const cashBySource: Record<string, number> = { Paid: 0, Referral: 0, Organic: 0 }
-  for (const r of ytdWon) {
-    cashBySource[classifySource(r)] += parseMoney(r.cashCollected)
+  // Cash by source — from Closed Deals sheet (lead source field), YTD
+  const ytdClosedDeals = closedDeals.filter((d) => {
+    const parsed = splitDate(d.intakeDate)
+    return parsed && parsed.year === currentYear
+  })
+  const closedBySource: Record<string, number> = {}
+  for (const d of ytdClosedDeals) {
+    const key = d.leadSource?.trim() || 'Unknown'
+    closedBySource[key] = (closedBySource[key] ?? 0) + parseMoney(d.amount)
   }
-  const totalCash = cashBySource.Paid + cashBySource.Referral + cashBySource.Organic
+  const totalCash = Object.values(closedBySource).reduce((s, v) => s + v, 0)
+  const SOURCE_PALETTE = ['#0ea5e9', '#f97316', '#10b981', '#6366f1', '#64748b']
+  const cashBySourceData = Object.entries(closedBySource)
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, amount], i) => ({
+      label,
+      amount,
+      color: SOURCE_PALETTE[i % SOURCE_PALETTE.length],
+      pct: totalCash > 0 ? `${((amount / totalCash) * 100).toFixed(1)}%` : '0%',
+    }))
 
+  // Cash collected trend from Appointments (for cash trend chart)
   const cashTrend: CashTrendDataPoint[] = Array.from({ length: currentMonth + 1 }, (_, m) => ({
     month: MONTH_NAMES[m],
     cash: ytdWon
       .filter((r) => { const d = splitDate(r.callDate || r.dateIn); return d && d.month === m })
       .reduce((sum, r) => sum + parseMoney(r.cashCollected), 0),
   }))
+
+  // Revenue trend from Closed Deals sheet by intake month
+  const revTrend: RevenueTrendPoint[] = Array.from({ length: currentMonth + 1 }, (_, m) => {
+    const monthDeals = ytdClosedDeals.filter((d) => {
+      const parsed = splitDate(d.intakeDate)
+      return parsed && parsed.month === m
+    })
+    const monthCash = ytdWon.filter((r) => {
+      const d = splitDate(r.callDate || r.dateIn)
+      return d && d.month === m
+    })
+    return {
+      month:         MONTH_NAMES[m],
+      revenue:       monthDeals.reduce((s, d) => s + parseMoney(d.amount), 0),
+      deals:         monthDeals.length,
+      cashCollected: monthCash.reduce((s, r) => s + parseMoney(r.cashCollected), 0),
+    }
+  })
+
+  // Conversion funnel (YTD)
+  const ytdLeads  = leadRows.filter((r) => { const d = splitDate(r.dateIn); return d && d.year === currentYear }).length
+  const ytdBooked = (() => {
+    const eligible = ytdRows.filter((r) => r.callStatus && r.callStatus.toLowerCase() !== 'rescheduled' && r.email)
+    return new Set(eligible.map((r) => r.email.toLowerCase())).size
+  })()
+  const ytdShowed  = ytdRows.filter((r) => r.callStatus === 'Showed').length
+  const ytdClosed  = ytdClosedDeals.length
+  const funnelSteps = [
+    { label: 'Leads',        value: ytdLeads,  color: '#94a3b8', pct: undefined },
+    { label: 'Calls Booked', value: ytdBooked, color: '#0891b2', pct: ytdLeads  > 0 ? `${((ytdBooked / ytdLeads)  * 100).toFixed(1)}%` : undefined },
+    { label: 'Calls Showed', value: ytdShowed, color: '#10b981', pct: ytdBooked > 0 ? `${((ytdShowed / ytdBooked) * 100).toFixed(1)}%` : undefined },
+    { label: 'Deals Closed', value: ytdClosed, color: '#6366f1', pct: ytdShowed > 0 ? `${((ytdClosed / ytdShowed) * 100).toFixed(1)}%` : undefined },
+  ]
 
   const QUALITY_TIERS = ['High Value', 'Qualified', 'So-So', 'Low Quality', 'Bad Lead'] as const
   const qualityMonthly: Record<number, LeadQualityDataPoint> = {}
@@ -244,49 +340,90 @@ export default async function OverviewPage({
   const qualityData = Object.values(qualityMonthly).slice(0, currentMonth + 1)
 
   const PIPELINE_STAGES = ['Follow Up Scheduled', 'Deposit Made', 'Need To Follow Up']
-  const pipelineRows = ytdRows.filter((r) => PIPELINE_STAGES.includes(r.callOutcome))
-  const pipelineCount    = pipelineRows.length
-  const pipelineValue    = pipelineRows.reduce((sum, r) => sum + parseMoney(r.totalPrice), 0)
-  const pipelineAvgDeal  = pipelineCount > 0 ? pipelineValue / pipelineCount : 0
+  const pipelineRows    = ytdRows.filter((r) => PIPELINE_STAGES.includes(r.callOutcome))
+  const pipelineCount   = pipelineRows.length
+  const pipelineValue   = pipelineRows.reduce((sum, r) => sum + parseMoney(r.totalPrice), 0)
+  const pipelineAvgDeal = pipelineCount > 0 ? pipelineValue / pipelineCount : 0
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Overview</h1>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-400">{range.label}</span>
-          <Suspense>
-            <DateRangePicker current={preset} />
-          </Suspense>
+      <h1 className="text-2xl font-bold text-gray-900 mb-6">Overview</h1>
+
+      {/* Period Performance — section header with date filter */}
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Period Performance</h2>
+          <p className="text-xs text-gray-400">Filtered by selected date range</p>
         </div>
+        <Suspense>
+          <DateRangePicker current={preset} />
+        </Suspense>
       </div>
 
-      {/* Top KPI row */}
-      <div className="grid grid-cols-6 gap-3 mb-6">
-        <KpiCard label="Leads"          value={leads.toLocaleString()}   sub={range.label}               icon={Users}        iconColor="text-teal-500"   delta={deltas.leads} />
-        <KpiCard label="Calls Booked"   value={booked.toLocaleString()}  sub={`${((leads > 0 ? booked/leads : 0)*100).toFixed(1)}% of leads`} icon={CalendarDays} iconColor="text-cyan-500"   delta={deltas.booked} />
-        <KpiCard label="Qualified Calls" value={showed.toLocaleString()} sub={`${showRate}% show rate`}  icon={Phone}        iconColor="text-green-500"  delta={deltas.showed} />
-        <KpiCard label="Deals Closed"   value={closed.toLocaleString()}  sub={`${closeRate}% close rate`} icon={CheckCircle2} iconColor="text-emerald-500" delta={deltas.closed} />
-        <KpiCard label="Cash Collected" value={fmt(cashCollected)}       sub="All sources"               icon={DollarSign}   iconColor="text-blue-500"   delta={deltas.cash} />
-        <KpiCard label="Avg Days to Paid" value={`${avgDaysToPaid}d`}   sub="Strategy mtg → paid"       icon={Clock}        iconColor="text-gray-400"   delta={deltas.avgDays} />
+      {/* 6 KPI tiles — date-filter driven */}
+      <div className="grid grid-cols-6 gap-3 mb-8">
+        <KpiCard
+          label="Leads"
+          value={leads.toLocaleString()}
+          sub={range.label}
+          icon={Users}
+          iconColor="text-teal-500"
+          delta={deltas.leads}
+        />
+        <KpiCard
+          label="Calls Booked"
+          value={booked.toLocaleString()}
+          sub={`${leads > 0 ? ((booked / leads) * 100).toFixed(1) : 0}% of leads`}
+          icon={CalendarDays}
+          iconColor="text-cyan-500"
+          delta={deltas.booked}
+        />
+        <KpiCard
+          label="Calls Showed"
+          value={showed.toLocaleString()}
+          sub={`${showRate}% show rate`}
+          icon={Phone}
+          iconColor="text-green-500"
+          delta={deltas.showed}
+        />
+        <KpiCard
+          label="Deals Closed"
+          value={closedDealsInRange.toLocaleString()}
+          sub={`${closeRateVal}% close rate`}
+          icon={CheckCircle2}
+          iconColor="text-emerald-500"
+          delta={deltas.dealsClosed}
+        />
+        <KpiCard
+          label="Total Revenue"
+          value={fmt(totalRevenueInRange)}
+          sub="All sources"
+          icon={Trophy}
+          iconColor="text-amber-500"
+          delta={deltas.totalRevenue}
+        />
+        <KpiCard
+          label="Cash Collected"
+          value={fmt(cashCollected)}
+          sub="All sources"
+          icon={DollarSign}
+          iconColor="text-blue-500"
+          delta={deltas.cash}
+        />
       </div>
 
-      {/* Ad Spend — current month weekly breakdown */}
+      {/* This Month at a Glance */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mb-6">
         <h2 className="text-base font-semibold text-gray-900">This Month at a Glance</h2>
         <p className="text-sm text-gray-400 mb-4">{currentMonthName} {currentYear}</p>
 
-        {/* MTD tiles — 9 compact cards in a single row */}
-        <div className="grid grid-cols-9 gap-2 mb-5">
-          <KpiCard compact label="Ad Spend (MTD)"  value={fmt(adSpendMtd)}                        sub={`${currentMonthName} ${currentYear}`} icon={DollarSign}   iconColor="text-blue-500"    valueColor="text-blue-600" />
-          <KpiCard compact label="Total Leads"     value={ceoDashMonth.leads.toLocaleString()}     sub={`${currentMonthName} ${currentYear}`} icon={Users}        iconColor="text-teal-500"    valueColor="text-teal-600" />
-          <KpiCard compact label="Cost / Lead"     value={fmt(costPerLead)}                        sub={`${ceoDashMonth.leads} leads`}        icon={DollarSign}   iconColor="text-teal-500"    valueColor="text-teal-600" />
-          <KpiCard compact label="Calls Booked"    value={ceoDashMonth.booked.toLocaleString()}    sub={`${currentMonthName} ${currentYear}`} icon={CalendarDays} iconColor="text-cyan-500"    valueColor="text-cyan-600" />
-          <KpiCard compact label="Cost / Booked"   value={fmt(costPerBooked)}                      sub={`${ceoDashMonth.booked} booked`}      icon={DollarSign}   iconColor="text-cyan-500"    valueColor="text-cyan-600" />
-          <KpiCard compact label="Calls Showed"    value={ceoDashMonth.showed.toLocaleString()}    sub={`${currentMonthName} ${currentYear}`} icon={Phone}        iconColor="text-green-500"   valueColor="text-green-600" />
-          <KpiCard compact label="No Shows"        value={ceoDashMonth.noShows.toLocaleString()}   sub={`${currentMonthName} ${currentYear}`} icon={PhoneOff}     iconColor="text-red-400"     valueColor="text-red-500" />
-          <KpiCard compact label="Calls Cancelled" value={ceoDashMonth.cancelled.toLocaleString()} sub={`${currentMonthName} ${currentYear}`} icon={XCircle}      iconColor="text-gray-400"    valueColor="text-gray-600" />
-          <KpiCard compact label="Show Rate"       value={ceoDashMonth.showRate}                   sub="Showed ÷ Booked"                      icon={TrendingUp}   iconColor="text-emerald-500" valueColor="text-emerald-600" />
+        {/* 5 MTD tiles */}
+        <div className="grid grid-cols-5 gap-3 mb-5">
+          <KpiCard compact label="Ad Spend (MTD)"  value={fmt(adSpendMtd)}            sub={`${currentMonthName} ${currentYear}`} icon={DollarSign}  iconColor="text-blue-500"    valueColor="text-blue-600" />
+          <KpiCard compact label="Cost / Lead"     value={fmt(costPerLead)}            sub={`${mtdLeads} leads`}                  icon={DollarSign}  iconColor="text-teal-500"    valueColor="text-teal-600" />
+          <KpiCard compact label="Cost / Booked"   value={fmt(costPerBooked)}          sub={`${mtdBooked} booked`}                icon={DollarSign}  iconColor="text-cyan-500"    valueColor="text-cyan-600" />
+          <KpiCard compact label="Show Rate"       value={mtdShowRate}                 sub="Showed ÷ Booked"                      icon={TrendingUp}  iconColor="text-emerald-500" valueColor="text-emerald-600" />
+          <KpiCard compact label="Deals Won"       value={mtdDealsWon.toLocaleString()} sub={`${currentMonthName} ${currentYear}`} icon={Trophy}      iconColor="text-amber-500"   valueColor="text-amber-600" />
         </div>
 
         {/* Weekly table */}
@@ -309,62 +446,67 @@ export default async function OverviewPage({
             {weeklyRows.map((w) => (
               <tr key={w.label} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                 <td className="py-2 text-teal-600 font-medium text-xs">{w.label}</td>
-                <td className="py-2 text-right text-gray-700">{w.adSpend > 0 ? fmt(w.adSpend) : '—'}</td>
-                <td className="py-2 text-right text-gray-700">{w.leads}</td>
-                <td className="py-2 text-right text-gray-700">{w.booked}</td>
-                <td className="py-2 text-right text-gray-700">{w.showed}</td>
-                <td className="py-2 text-right text-red-400">{w.noShows}</td>
-                <td className="py-2 text-right text-gray-400">{w.cancelled}</td>
-                <td className="py-2 text-right text-gray-500">{w.showRate}</td>
-                <td className="py-2 text-right text-gray-700">{w.closed}</td>
-                <td className="py-2 text-right text-gray-700">{w.revenue > 0 ? fmt(w.revenue) : '—'}</td>
+                <td className="py-2 text-right">{w.adSpend > 0 ? <span className="text-gray-700">{fmt(w.adSpend)}</span> : <span className="text-gray-300">0</span>}</td>
+                <td className="py-2 text-right">{w.leads > 0 ? <span className="text-gray-700">{w.leads}</span> : <span className="text-gray-300">0</span>}</td>
+                <td className="py-2 text-right">{w.booked > 0 ? <span className="text-gray-700">{w.booked}</span> : <span className="text-gray-300">0</span>}</td>
+                <td className="py-2 text-right">{w.showed > 0 ? <span className="text-gray-700">{w.showed}</span> : <span className="text-gray-300">0</span>}</td>
+                <td className="py-2 text-right">{w.noShows > 0 ? <span className="text-gray-700">{w.noShows}</span> : <span className="text-gray-300">0</span>}</td>
+                <td className="py-2 text-right">{w.cancelled > 0 ? <span className="text-gray-700">{w.cancelled}</span> : <span className="text-gray-300">0</span>}</td>
+                <td className="py-2 text-right">{w.booked > 0 ? <span className="text-gray-700">{w.showRate}</span> : <span className="text-gray-300">0%</span>}</td>
+                <td className="py-2 text-right">{w.dealsWon > 0 ? <span className="text-gray-700">{w.dealsWon}</span> : <span className="text-gray-300">0</span>}</td>
+                <td className="py-2 text-right">{w.revenue > 0 ? <span className="text-gray-700">{fmt(w.revenue)}</span> : <span className="text-gray-300">0</span>}</td>
               </tr>
             ))}
+            {/* Totals row */}
+            <tr className="border-t-2 border-gray-200 bg-gray-50">
+              <td className="py-2.5 font-semibold text-gray-700 text-xs">Total</td>
+              <td className="py-2.5 text-right font-semibold text-gray-900">{totals.adSpend > 0 ? fmt(totals.adSpend) : '—'}</td>
+              <td className="py-2.5 text-right font-semibold text-gray-900">{totals.leads}</td>
+              <td className="py-2.5 text-right font-semibold text-gray-900">{totals.booked}</td>
+              <td className="py-2.5 text-right font-semibold text-gray-900">{totals.showed}</td>
+              <td className="py-2.5 text-right font-semibold text-gray-900">{totals.noShows}</td>
+              <td className="py-2.5 text-right font-semibold text-gray-700">{totals.cancelled}</td>
+              <td className="py-2.5 text-right font-semibold text-gray-700">{totalsShowRate}</td>
+              <td className="py-2.5 text-right font-semibold">{totals.dealsWon > 0 ? <span className="text-gray-900">{totals.dealsWon}</span> : <span className="text-gray-300">0</span>}</td>
+              <td className="py-2.5 text-right font-semibold text-gray-900">{totals.revenue > 0 ? fmt(totals.revenue) : <span className="text-gray-300">0</span>}</td>
+            </tr>
           </tbody>
         </table>
       </div>
 
-      {/* Monthly performance + Cash by source side by side */}
+      {/* Monthly performance + Cash by source */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="col-span-2 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
           <h2 className="text-base font-semibold text-gray-900">Monthly performance</h2>
-          <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — leads, booked, qualified, closed</p>
+          <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — leads, booked, showed + show rate</p>
           <MonthlyChart data={monthlyData} />
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-          <h2 className="text-base font-semibold text-gray-900">Cash by source</h2>
-          <p className="text-sm text-gray-400 mb-3">January–{currentMonthName} {currentYear}</p>
-          <CashBySourceDonut data={[
-            { label: 'Referral', color: '#f97316', amount: cashBySource.Referral, pct: totalCash > 0 ? `${((cashBySource.Referral / totalCash) * 100).toFixed(1)}%` : '0%' },
-            { label: 'Paid',     color: '#0ea5e9', amount: cashBySource.Paid,     pct: totalCash > 0 ? `${((cashBySource.Paid     / totalCash) * 100).toFixed(1)}%` : '0%' },
-            { label: 'Organic',  color: '#10b981', amount: cashBySource.Organic,  pct: totalCash > 0 ? `${((cashBySource.Organic  / totalCash) * 100).toFixed(1)}%` : '0%' },
-          ]} />
+          <h2 className="text-base font-semibold text-gray-900">Revenue by source</h2>
+          <p className="text-sm text-gray-400 mb-3">January–{currentMonthName} {currentYear} — from Closed Deals</p>
+          <CashBySourceDonut data={cashBySourceData} />
         </div>
       </div>
 
-      {/* Pipeline value */}
+      {/* Revenue trend — full width hero chart */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mb-6">
-        <h2 className="text-base font-semibold text-gray-900">Active pipeline</h2>
-        <p className="text-sm text-gray-400 mb-4">Deals in motion — Follow Up Scheduled, Deposit Made, Need To Follow Up</p>
-        <div className="grid grid-cols-3 gap-4">
-          <KpiCard label="Pipeline Deals" value={pipelineCount}        sub="Active opportunities"  icon={CheckCircle2} iconColor="text-amber-500" />
-          <KpiCard label="Pipeline Value" value={fmt(pipelineValue)}   sub="Total contract value"  icon={DollarSign}   iconColor="text-teal-500" />
-          <KpiCard label="Avg Deal Size"  value={fmt(pipelineAvgDeal)} sub="In pipeline"            icon={DollarSign}   iconColor="text-cyan-500" />
+        <h2 className="text-base font-semibold text-gray-900">Revenue trend</h2>
+        <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — revenue, cash collected & deals by month</p>
+        <RevenueTrendChart data={revTrend} />
+      </div>
+
+      {/* Lead quality trend + Conversion funnel */}
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="col-span-2 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+          <h2 className="text-base font-semibold text-gray-900">Lead quality trend</h2>
+          <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — Good (High Value + Qualified) vs Bad (Bad Lead + Low Quality)</p>
+          <LeadQualityChart data={qualityData} />
         </div>
-      </div>
-
-      {/* Cash collected trend */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mb-6">
-        <h2 className="text-base font-semibold text-gray-900">Cash collected trend</h2>
-        <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — monthly cash, all sources combined</p>
-        <CashTrendChart data={cashTrend} />
-      </div>
-
-      {/* Lead quality distribution */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mb-6">
-        <h2 className="text-base font-semibold text-gray-900">Lead quality distribution</h2>
-        <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — monthly breakdown by lead quality tier</p>
-        <LeadQualityChart data={qualityData} />
+        <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+          <h2 className="text-base font-semibold text-gray-900">Conversion funnel</h2>
+          <p className="text-sm text-gray-400 mb-4">YTD — step-by-step conversion</p>
+          <ConversionFunnel steps={funnelSteps} />
+        </div>
       </div>
     </div>
   )
