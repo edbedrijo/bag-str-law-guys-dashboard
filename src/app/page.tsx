@@ -352,58 +352,6 @@ export default async function OverviewPage({
         </div>
       </div>
 
-      {/* Top 6 KPI tiles */}
-      <div className="grid grid-cols-6 gap-3 mb-6">
-        <KpiCard
-          label="Leads"
-          value={leads.toLocaleString()}
-          sub={range.label}
-          icon={Users}
-          iconColor="text-teal-500"
-          delta={deltas.leads}
-        />
-        <KpiCard
-          label="Calls Booked"
-          value={booked.toLocaleString()}
-          sub={`${leads > 0 ? ((booked / leads) * 100).toFixed(1) : 0}% of leads`}
-          icon={CalendarDays}
-          iconColor="text-cyan-500"
-          delta={deltas.booked}
-        />
-        <KpiCard
-          label="Calls Showed"
-          value={showed.toLocaleString()}
-          sub={`${showRate}% show rate`}
-          icon={Phone}
-          iconColor="text-green-500"
-          delta={deltas.showed}
-        />
-        <KpiCard
-          label="Deals Closed"
-          value={closedDealsInRange.toLocaleString()}
-          sub={`${closeRateVal}% close rate`}
-          icon={CheckCircle2}
-          iconColor="text-emerald-500"
-          delta={deltas.dealsClosed}
-        />
-        <KpiCard
-          label="Total Revenue"
-          value={fmt(totalRevenueInRange)}
-          sub="All sources"
-          icon={Trophy}
-          iconColor="text-amber-500"
-          delta={deltas.totalRevenue}
-        />
-        <KpiCard
-          label="Cash Collected"
-          value={fmt(cashCollected)}
-          sub="All sources"
-          icon={DollarSign}
-          iconColor="text-blue-500"
-          delta={deltas.cash}
-        />
-      </div>
-
       {/* This Month at a Glance */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mb-6">
         <h2 className="text-base font-semibold text-gray-900">This Month at a Glance</h2>
@@ -464,6 +412,58 @@ export default async function OverviewPage({
             </tr>
           </tbody>
         </table>
+      </div>
+
+      {/* 6 KPI tiles — date-filter driven */}
+      <div className="grid grid-cols-6 gap-3 mb-6">
+        <KpiCard
+          label="Leads"
+          value={leads.toLocaleString()}
+          sub={range.label}
+          icon={Users}
+          iconColor="text-teal-500"
+          delta={deltas.leads}
+        />
+        <KpiCard
+          label="Calls Booked"
+          value={booked.toLocaleString()}
+          sub={`${leads > 0 ? ((booked / leads) * 100).toFixed(1) : 0}% of leads`}
+          icon={CalendarDays}
+          iconColor="text-cyan-500"
+          delta={deltas.booked}
+        />
+        <KpiCard
+          label="Calls Showed"
+          value={showed.toLocaleString()}
+          sub={`${showRate}% show rate`}
+          icon={Phone}
+          iconColor="text-green-500"
+          delta={deltas.showed}
+        />
+        <KpiCard
+          label="Deals Closed"
+          value={closedDealsInRange.toLocaleString()}
+          sub={`${closeRateVal}% close rate`}
+          icon={CheckCircle2}
+          iconColor="text-emerald-500"
+          delta={deltas.dealsClosed}
+        />
+        <KpiCard
+          label="Total Revenue"
+          value={fmt(totalRevenueInRange)}
+          sub="All sources"
+          icon={Trophy}
+          iconColor="text-amber-500"
+          delta={deltas.totalRevenue}
+        />
+        <KpiCard
+          label="Cash Collected"
+          value={fmt(cashCollected)}
+          sub="All sources"
+          icon={DollarSign}
+          iconColor="text-blue-500"
+          delta={deltas.cash}
+        />
       </div>
 
       {/* Monthly performance + Cash by source */}
