@@ -420,10 +420,10 @@ export default async function OverviewPage({
         {/* 5 MTD tiles */}
         <div className="grid grid-cols-5 gap-3 mb-5">
           <KpiCard compact label="Ad Spend (MTD)"  value={fmt(adSpendMtd)}             icon={DollarSign}  iconColor="text-blue-500"    valueColor="text-blue-600" />
-          <KpiCard compact label="Cost / Lead"     value={fmt(costPerLead)}            sub={`${mtdLeads} leads`}   icon={DollarSign}  iconColor="text-teal-500"    valueColor="text-teal-600" />
-          <KpiCard compact label="Cost / Booked"   value={fmt(costPerBooked)}          sub={`${mtdBooked} booked`} icon={DollarSign}  iconColor="text-cyan-500"    valueColor="text-cyan-600" />
-          <KpiCard compact label="Show Rate"       value={mtdShowRate}                 sub="Showed ÷ Booked"       icon={TrendingUp}  iconColor="text-emerald-500" valueColor="text-emerald-600" />
-          <KpiCard compact label="Deals Won"       value={mtdDealsWon.toLocaleString()}                            icon={Trophy}      iconColor="text-amber-500"   valueColor="text-amber-600" />
+          <KpiCard compact label="Cost / Lead"     value={fmt(costPerLead)}            icon={DollarSign}  iconColor="text-teal-500"    valueColor="text-teal-600" />
+          <KpiCard compact label="Cost / Booked"   value={fmt(costPerBooked)}          icon={DollarSign}  iconColor="text-cyan-500"    valueColor="text-cyan-600" />
+          <KpiCard compact label="Show Rate"       value={mtdShowRate}                 icon={TrendingUp}  iconColor="text-emerald-500" valueColor="text-emerald-600" />
+          <KpiCard compact label="Deals Won"       value={mtdDealsWon.toLocaleString()} icon={Trophy}     iconColor="text-amber-500"   valueColor="text-amber-600" />
         </div>
 
         {/* Weekly table */}
