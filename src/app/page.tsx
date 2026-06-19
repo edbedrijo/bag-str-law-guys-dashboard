@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { Suspense } from 'react'
 import { getLeads, getAppointments, getCeoDashboard } from '@/lib/sheets'
+import { getMonthlyAdSpend } from '@/lib/ghl'
 import { getDateRange, getPriorRange, inRange, type DateRangePreset } from '@/lib/dateRange'
 import KpiCard from '@/components/KpiCard'
 import MonthlyChart from '@/components/MonthlyChart'
@@ -131,10 +132,11 @@ export default async function OverviewPage({
   const range      = getDateRange(preset, now)
   const priorRange = getPriorRange(preset, now)
 
-  const [leadRows, rows, ceoDash] = await Promise.all([
+  const [leadRows, rows, ceoDash, ghlAdSpend] = await Promise.all([
     getLeads(),
     getAppointments(),
     getCeoDashboard(),
+    getMonthlyAdSpend(currentYear, currentMonth),
   ])
 
   // KPIs for selected range
@@ -163,14 +165,27 @@ export default async function OverviewPage({
     adSpend: 0, leads: 0, booked: 0, showed: 0, noShows: 0, cancelled: 0,
     showRate: '0%', dealsWon: 0, revenue: 0, avgDeal: 0, cpl: 0, costPerShow: 0, closeRate: '0%', period: '',
   }
-  const adSpendMtd    = ceoDash.weekly.reduce((sum, w) => sum + w.adSpend, 0)
-  const costPerLead   = ceoDashMonth.cpl
+  // Ad spend from GHL Facebook reporting API (daily grouped, bucketed into dashboard weeks)
+  const monthWeeks = getMonthWeeks(currentYear, currentMonth, now)
+  const ghlSpendByWeek: number[] = monthWeeks.map(({ start, end }) => {
+    return ghlAdSpend.daily.reduce((sum, d) => {
+      const ms = Date.UTC(
+        parseInt(d.date.slice(0, 4)),
+        parseInt(d.date.slice(5, 7)) - 1,
+        parseInt(d.date.slice(8, 10)),
+      )
+      return ms >= start && ms <= end ? sum + d.spend : sum
+    }, 0)
+  })
+
+  const adSpendMtd    = ghlAdSpend.totalSpend
+  const costPerLead   = ceoDashMonth.leads > 0 ? adSpendMtd / ceoDashMonth.leads : 0
   const costPerBooked = ceoDashMonth.booked > 0 ? adSpendMtd / ceoDashMonth.booked : 0
 
-  // Weekly breakdown from CEO Dashboard sheet directly
-  const weeklyRows = ceoDash.weekly.map((w) => ({
+  // Weekly breakdown — leads/booked/etc from CEO Dashboard sheet; spend from GHL daily bucketed
+  const weeklyRows = ceoDash.weekly.map((w, i) => ({
     label:     w.period,
-    adSpend:   w.adSpend,
+    adSpend:   ghlSpendByWeek[i] ?? 0,
     leads:     w.leads,
     booked:    w.booked,
     showed:    w.showed,
