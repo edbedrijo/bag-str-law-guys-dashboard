@@ -497,28 +497,10 @@ export default async function OverviewPage({
         </div>
       </div>
 
-      {/* Active pipeline */}
+      {/* Lead quality trend */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mb-6">
-        <h2 className="text-base font-semibold text-gray-900">Active pipeline</h2>
-        <p className="text-sm text-gray-400 mb-4">Deals in motion — Follow Up Scheduled, Deposit Made, Need To Follow Up</p>
-        <div className="grid grid-cols-3 gap-4">
-          <KpiCard label="Pipeline Deals" value={pipelineCount}        sub="Active opportunities" icon={CheckCircle2} iconColor="text-amber-500" />
-          <KpiCard label="Pipeline Value" value={fmt(pipelineValue)}   sub="Total contract value" icon={DollarSign}   iconColor="text-teal-500" />
-          <KpiCard label="Avg Deal Size"  value={fmt(pipelineAvgDeal)} sub="In pipeline"           icon={DollarSign}   iconColor="text-cyan-500" />
-        </div>
-      </div>
-
-      {/* Cash collected trend */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mb-6">
-        <h2 className="text-base font-semibold text-gray-900">Cash collected trend</h2>
-        <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — monthly cash, all sources combined</p>
-        <CashTrendChart data={cashTrend} />
-      </div>
-
-      {/* Lead quality distribution */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mb-6">
-        <h2 className="text-base font-semibold text-gray-900">Lead quality distribution</h2>
-        <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — monthly breakdown by lead quality tier</p>
+        <h2 className="text-base font-semibold text-gray-900">Lead quality trend</h2>
+        <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — Good (High Value + Qualified) vs Bad (Bad Lead + Low Quality)</p>
         <LeadQualityChart data={qualityData} />
       </div>
     </div>
