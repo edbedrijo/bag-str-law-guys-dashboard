@@ -84,6 +84,41 @@ export async function getAppointments(): Promise<AppointmentRow[]> {
   }))
 }
 
+export interface ClosedDealRow {
+  clientName:  string
+  matterType:  string
+  intakeDate:  string
+  amount:      string
+  referredBy:  string
+  leadSource:  string
+  email:       string
+  phone:       string
+}
+
+export async function getClosedDeals(): Promise<ClosedDealRow[]> {
+  const auth = getAuth()
+  const sheets = google.sheets({ version: 'v4', auth })
+
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: 'Closed Deals!A23:I',  // row 23 = first data row; col A = index#, B-I = fields
+  })
+
+  const rows = res.data.values ?? []
+  return rows
+    .filter((r) => r[1] && r[1].trim() !== '')  // skip rows with no client name (col B)
+    .map((r) => ({
+      clientName: r[1] ?? '',  // B
+      matterType: r[2] ?? '',  // C
+      intakeDate: r[3] ?? '',  // D
+      amount:     r[4] ?? '',  // E
+      referredBy: r[5] ?? '',  // F
+      leadSource: r[6] ?? '',  // G
+      email:      r[7] ?? '',  // H
+      phone:      r[8] ?? '',  // I
+    }))
+}
+
 export interface CeoDashRow {
   period:      string
   adSpend:     number
