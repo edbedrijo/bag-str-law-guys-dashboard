@@ -1,13 +1,14 @@
 'use client'
 
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
 
 export interface RevenueTrendPoint {
-  month:   string
-  revenue: number
-  deals:   number
+  month:        string
+  revenue:      number
+  deals:        number
+  cashCollected: number
 }
 
 interface Props { data: RevenueTrendPoint[] }
@@ -36,10 +37,12 @@ export default function RevenueTrendChart({ data }: Props) {
         <Tooltip
           contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
           labelStyle={{ color: '#111827', fontWeight: 600 }}
-          formatter={(value, name) => name === 'Revenue' ? [fmtFull(Number(value)), name] : [value, name]}
+          formatter={(value, name) => ['Revenue', 'Cash Collected'].includes(String(name)) ? [fmtFull(Number(value)), name] : [value, name]}
         />
-        <Line yAxisId="rev"   type="monotone" dataKey="revenue" name="Revenue" stroke="#6366f1" strokeWidth={2.5} dot={{ r: 4, fill: '#6366f1' }} activeDot={{ r: 6 }} />
-        <Line yAxisId="deals" type="monotone" dataKey="deals"   name="Deals"   stroke="#10b981" strokeWidth={2}   dot={{ r: 3, fill: '#10b981' }} activeDot={{ r: 5 }} strokeDasharray="5 3" />
+        <Legend wrapperStyle={{ color: '#6b7280', fontSize: 12, paddingTop: 12 }} />
+        <Line yAxisId="rev"   type="monotone" dataKey="revenue"       name="Revenue"        stroke="#6366f1" strokeWidth={2.5} dot={{ r: 4, fill: '#6366f1' }} activeDot={{ r: 6 }} />
+        <Line yAxisId="rev"   type="monotone" dataKey="cashCollected" name="Cash Collected" stroke="#0891b2" strokeWidth={2.5} dot={{ r: 4, fill: '#0891b2' }} activeDot={{ r: 6 }} strokeDasharray="5 3" />
+        <Line yAxisId="deals" type="monotone" dataKey="deals"         name="Deals"          stroke="#10b981" strokeWidth={2}   dot={{ r: 3, fill: '#10b981' }} activeDot={{ r: 5 }} strokeDasharray="5 3" />
       </LineChart>
     </ResponsiveContainer>
   )

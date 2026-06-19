@@ -299,10 +299,15 @@ export default async function OverviewPage({
       const parsed = splitDate(d.intakeDate)
       return parsed && parsed.month === m
     })
+    const monthCash = ytdWon.filter((r) => {
+      const d = splitDate(r.callDate || r.dateIn)
+      return d && d.month === m
+    })
     return {
-      month:   MONTH_NAMES[m],
-      revenue: monthDeals.reduce((s, d) => s + parseMoney(d.amount), 0),
-      deals:   monthDeals.length,
+      month:         MONTH_NAMES[m],
+      revenue:       monthDeals.reduce((s, d) => s + parseMoney(d.amount), 0),
+      deals:         monthDeals.length,
+      cashCollected: monthCash.reduce((s, r) => s + parseMoney(r.cashCollected), 0),
     }
   })
 
@@ -487,7 +492,7 @@ export default async function OverviewPage({
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="col-span-2 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
           <h2 className="text-base font-semibold text-gray-900">Revenue trend</h2>
-          <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — revenue & deals by month</p>
+          <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — revenue, cash collected & deals by month</p>
           <RevenueTrendChart data={revTrend} />
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
