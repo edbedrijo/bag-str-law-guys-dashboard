@@ -342,14 +342,69 @@ export default async function OverviewPage({
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Overview</h1>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-400">{range.label}</span>
-          <Suspense>
-            <DateRangePicker current={preset} />
-          </Suspense>
+      <h1 className="text-2xl font-bold text-gray-900 mb-6">Overview</h1>
+
+      {/* Period Performance — section header with date filter */}
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Period Performance</h2>
+          <p className="text-xs text-gray-400">Filtered by selected date range</p>
         </div>
+        <Suspense>
+          <DateRangePicker current={preset} />
+        </Suspense>
+      </div>
+
+      {/* 6 KPI tiles — date-filter driven */}
+      <div className="grid grid-cols-6 gap-3 mb-8">
+        <KpiCard
+          label="Leads"
+          value={leads.toLocaleString()}
+          sub={range.label}
+          icon={Users}
+          iconColor="text-teal-500"
+          delta={deltas.leads}
+        />
+        <KpiCard
+          label="Calls Booked"
+          value={booked.toLocaleString()}
+          sub={`${leads > 0 ? ((booked / leads) * 100).toFixed(1) : 0}% of leads`}
+          icon={CalendarDays}
+          iconColor="text-cyan-500"
+          delta={deltas.booked}
+        />
+        <KpiCard
+          label="Calls Showed"
+          value={showed.toLocaleString()}
+          sub={`${showRate}% show rate`}
+          icon={Phone}
+          iconColor="text-green-500"
+          delta={deltas.showed}
+        />
+        <KpiCard
+          label="Deals Closed"
+          value={closedDealsInRange.toLocaleString()}
+          sub={`${closeRateVal}% close rate`}
+          icon={CheckCircle2}
+          iconColor="text-emerald-500"
+          delta={deltas.dealsClosed}
+        />
+        <KpiCard
+          label="Total Revenue"
+          value={fmt(totalRevenueInRange)}
+          sub="All sources"
+          icon={Trophy}
+          iconColor="text-amber-500"
+          delta={deltas.totalRevenue}
+        />
+        <KpiCard
+          label="Cash Collected"
+          value={fmt(cashCollected)}
+          sub="All sources"
+          icon={DollarSign}
+          iconColor="text-blue-500"
+          delta={deltas.cash}
+        />
       </div>
 
       {/* This Month at a Glance */}
@@ -412,58 +467,6 @@ export default async function OverviewPage({
             </tr>
           </tbody>
         </table>
-      </div>
-
-      {/* 6 KPI tiles — date-filter driven */}
-      <div className="grid grid-cols-6 gap-3 mb-6">
-        <KpiCard
-          label="Leads"
-          value={leads.toLocaleString()}
-          sub={range.label}
-          icon={Users}
-          iconColor="text-teal-500"
-          delta={deltas.leads}
-        />
-        <KpiCard
-          label="Calls Booked"
-          value={booked.toLocaleString()}
-          sub={`${leads > 0 ? ((booked / leads) * 100).toFixed(1) : 0}% of leads`}
-          icon={CalendarDays}
-          iconColor="text-cyan-500"
-          delta={deltas.booked}
-        />
-        <KpiCard
-          label="Calls Showed"
-          value={showed.toLocaleString()}
-          sub={`${showRate}% show rate`}
-          icon={Phone}
-          iconColor="text-green-500"
-          delta={deltas.showed}
-        />
-        <KpiCard
-          label="Deals Closed"
-          value={closedDealsInRange.toLocaleString()}
-          sub={`${closeRateVal}% close rate`}
-          icon={CheckCircle2}
-          iconColor="text-emerald-500"
-          delta={deltas.dealsClosed}
-        />
-        <KpiCard
-          label="Total Revenue"
-          value={fmt(totalRevenueInRange)}
-          sub="All sources"
-          icon={Trophy}
-          iconColor="text-amber-500"
-          delta={deltas.totalRevenue}
-        />
-        <KpiCard
-          label="Cash Collected"
-          value={fmt(cashCollected)}
-          sub="All sources"
-          icon={DollarSign}
-          iconColor="text-blue-500"
-          delta={deltas.cash}
-        />
       </div>
 
       {/* Monthly performance + Cash by source */}
