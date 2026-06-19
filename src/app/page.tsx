@@ -474,25 +474,25 @@ export default async function OverviewPage({
         </table>
       </div>
 
-      {/* Monthly performance + Cash by source */}
+      {/* Monthly performance — full width */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mb-6">
+        <h2 className="text-base font-semibold text-gray-900">Monthly performance</h2>
+        <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — leads, booked, showed + show rate</p>
+        <MonthlyChart data={monthlyData} />
+      </div>
+
+      {/* Revenue trend + Revenue by source */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="col-span-2 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-          <h2 className="text-base font-semibold text-gray-900">Monthly performance</h2>
-          <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — leads, booked, showed + show rate</p>
-          <MonthlyChart data={monthlyData} />
+          <h2 className="text-base font-semibold text-gray-900">Revenue trend</h2>
+          <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — revenue, cash collected & deals by month</p>
+          <RevenueTrendChart data={revTrend} />
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
           <h2 className="text-base font-semibold text-gray-900">Revenue by source</h2>
           <p className="text-sm text-gray-400 mb-3">January–{currentMonthName} {currentYear} — from Closed Deals</p>
           <CashBySourceDonut data={cashBySourceData} />
         </div>
-      </div>
-
-      {/* Revenue trend — full width hero chart */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mb-6">
-        <h2 className="text-base font-semibold text-gray-900">Revenue trend</h2>
-        <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — revenue, cash collected & deals by month</p>
-        <RevenueTrendChart data={revTrend} />
       </div>
 
       {/* Lead quality trend + Conversion funnel */}
