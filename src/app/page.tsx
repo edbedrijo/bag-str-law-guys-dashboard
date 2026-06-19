@@ -488,25 +488,25 @@ export default async function OverviewPage({
         </div>
       </div>
 
-      {/* Revenue trend + Conversion funnel */}
+      {/* Revenue trend — full width hero chart */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mb-6">
+        <h2 className="text-base font-semibold text-gray-900">Revenue trend</h2>
+        <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — revenue, cash collected & deals by month</p>
+        <RevenueTrendChart data={revTrend} />
+      </div>
+
+      {/* Lead quality trend + Conversion funnel */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="col-span-2 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-          <h2 className="text-base font-semibold text-gray-900">Revenue trend</h2>
-          <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — revenue, cash collected & deals by month</p>
-          <RevenueTrendChart data={revTrend} />
+          <h2 className="text-base font-semibold text-gray-900">Lead quality trend</h2>
+          <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — Good (High Value + Qualified) vs Bad (Bad Lead + Low Quality)</p>
+          <LeadQualityChart data={qualityData} />
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
           <h2 className="text-base font-semibold text-gray-900">Conversion funnel</h2>
           <p className="text-sm text-gray-400 mb-4">YTD — step-by-step conversion</p>
           <ConversionFunnel steps={funnelSteps} />
         </div>
-      </div>
-
-      {/* Lead quality trend */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm mb-6">
-        <h2 className="text-base font-semibold text-gray-900">Lead quality trend</h2>
-        <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — Good (High Value + Qualified) vs Bad (Bad Lead + Low Quality)</p>
-        <LeadQualityChart data={qualityData} />
       </div>
     </div>
   )
