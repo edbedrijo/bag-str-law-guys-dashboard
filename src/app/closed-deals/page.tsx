@@ -41,15 +41,23 @@ export default async function ClosedDealsPage() {
       .filter((d) => d.email && parseMoney(d.cashCollected) > 0)
       .map((d) => [d.email.toLowerCase(), parseMoney(d.cashCollected)])
   )
-  const totalCashCollected = appts
+  // Track which emails were counted via the appointments loop so we don't double-count
+  const countedEmails = new Set<string>()
+  const apptsCash = appts
     .filter((a) => a.callOutcome === 'WON')
     .reduce((sum, a) => {
       const emailKey = a.email?.toLowerCase()
+      if (emailKey) countedEmails.add(emailKey)
       const cash = emailKey && closedCashByEmail.has(emailKey)
         ? closedCashByEmail.get(emailKey)!
         : parseMoney(a.cashCollected)
       return sum + cash
     }, 0)
+  // Second pass: Closed Deals sheet entries with no matching WON appointment
+  const orphanCash = raw
+    .filter((d) => d.email && parseMoney(d.cashCollected) > 0 && !countedEmails.has(d.email.toLowerCase()))
+    .reduce((sum, d) => sum + parseMoney(d.cashCollected), 0)
+  const totalCashCollected = apptsCash + orphanCash
 
   // ── KPI totals ──────────────────────────────────────────────────────────────
   const totalRevenue = raw.reduce((sum, d) => sum + parseMoney(d.amount), 0)
