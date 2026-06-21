@@ -6,7 +6,7 @@ import { getMonthlyAdSpend } from '@/lib/ghl'
 import { getDateRange, getPriorRange, inRange, type DateRangePreset } from '@/lib/dateRange'
 import KpiCard from '@/components/KpiCard'
 import MonthlyChart from '@/components/MonthlyChart'
-import CashBySourceDonut from '@/components/CashBySourceDonut'
+import CloserRevenueChart from '@/components/CloserRevenueChart'
 import LeadQualityChart from '@/components/LeadQualityChart'
 import CashTrendChart from '@/components/CashTrendChart'
 import RevenueTrendChart from '@/components/RevenueTrendChart'
@@ -52,7 +52,7 @@ function makeDelta(current: number, prior: number, label: string, invert = false
   return { diff, pct, label, invert }
 }
 
-function computeRangeKpis(leadRows: LeadRow[], rows: AppointmentRow[], range: ReturnType<typeof getDateRange>) {
+function computeRangeKpis(leadRows: LeadRow[], rows: AppointmentRow[], range: ReturnType<typeof getDateRange>, closedCashByEmail: Map<string, number> = new Map()) {
   const filteredLeads = leadRows.filter((r) => inRange(r.dateIn, range, splitDate))
   const leads = filteredLeads.length
 
@@ -62,7 +62,10 @@ function computeRangeKpis(leadRows: LeadRow[], rows: AppointmentRow[], range: Re
   )
   const booked   = new Set(bookedEligible.map((r) => r.email.toLowerCase())).size
   const showed   = filtered.filter((r) => r.callStatus === 'Showed').length
-  const cash     = filtered.filter((r) => r.callOutcome === 'WON').reduce((sum, r) => sum + parseMoney(r.cashCollected), 0)
+  const cash     = filtered.filter((r) => r.callOutcome === 'WON').reduce((sum, r) => {
+    const emailKey = r.email?.toLowerCase()
+    return sum + (emailKey && closedCashByEmail.has(emailKey) ? closedCashByEmail.get(emailKey)! : parseMoney(r.cashCollected))
+  }, 0)
   const noShows  = filtered.filter((r) => r.callStatus === 'No Show').length
   const cancelled = filtered.filter((r) => r.callStatus === 'Cancelled').length
 
@@ -134,10 +137,26 @@ export default async function OverviewPage({
   ])
 
   // ── Top tile KPIs from Appointments tab ─────────────────────────────────────
-  const cur  = computeRangeKpis(leadRows, rows, range)
-  const prev = computeRangeKpis(leadRows, rows, priorRange)
+  // Build closed deals cash map so the appointment loop prefers the more accurate sheet value
+  const closedCashByEmail = new Map(
+    closedDeals
+      .filter((d) => d.email && parseMoney(d.cashCollected) > 0)
+      .map((d) => [d.email.toLowerCase(), parseMoney(d.cashCollected)])
+  )
+  const cur  = computeRangeKpis(leadRows, rows, range, closedCashByEmail)
+  const prev = computeRangeKpis(leadRows, rows, priorRange, closedCashByEmail)
 
-  const { leads, booked, showed, cash: cashCollected } = cur
+  // WON appointment emails already counted in cur — track to avoid double-counting orphans
+  const wonEmailsInRange = new Set(
+    cur.filtered.filter((r) => r.callOutcome === 'WON' && r.email).map((r) => r.email!.toLowerCase())
+  )
+  // Orphan cash: Closed Deals entries with cash but no matching WON appointment in range
+  const orphanCashInRange = closedDeals
+    .filter((d) => d.email && parseMoney(d.cashCollected) > 0 && inRange(d.intakeDate, range, splitDate) && !wonEmailsInRange.has(d.email.toLowerCase()))
+    .reduce((sum, d) => sum + parseMoney(d.cashCollected), 0)
+
+  const { leads, booked, showed, cash: apptCashCollected } = cur
+  const cashCollected = apptCashCollected + orphanCashInRange
 
   const showRate = booked > 0 ? ((showed / booked) * 100).toFixed(1) : '0'
 
@@ -179,18 +198,15 @@ export default async function OverviewPage({
 
   const adSpendMtd = ghlAdSpend.totalSpend
 
-  // MTD leads + booked from Appointments (current month, for live cost calculations)
+  // MTD date bounds (still needed for mtdDealsWon below)
   const mtdStart = Date.UTC(currentYear, currentMonth, 1)
   const mtdEnd   = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
-  const mtdLeadRows = leadRows.filter((r) => { const ms = dateToMs(r.dateIn); return ms >= mtdStart && ms <= mtdEnd })
-  const mtdApptRows = rows.filter((r) => { const ms = dateToMs(r.dateIn); return ms >= mtdStart && ms <= mtdEnd })
-  const mtdLeads  = mtdLeadRows.length
-  const mtdBooked = new Set(
-    mtdApptRows
-      .filter((r) => r.callStatus && r.callStatus.toLowerCase() !== 'rescheduled' && r.email)
-      .map((r) => r.email.toLowerCase())
-  ).size
-  const mtdShowed = mtdApptRows.filter((r) => r.callStatus === 'Showed').length
+
+  // MTD leads + booked + showed from CEO Dashboard sheet — same source as the weekly table
+  // so the summary cards and table totals always agree.
+  const mtdLeads  = ceoDash.weekly.reduce((sum, w) => sum + w.leads,  0)
+  const mtdBooked = ceoDash.weekly.reduce((sum, w) => sum + w.booked, 0)
+  const mtdShowed = ceoDash.weekly.reduce((sum, w) => sum + w.showed, 0)
 
   const costPerLead   = mtdLeads  > 0 ? adSpendMtd / mtdLeads  : 0
   const costPerBooked = mtdBooked > 0 ? adSpendMtd / mtdBooked : 0
@@ -269,21 +285,25 @@ export default async function OverviewPage({
     const parsed = splitDate(d.intakeDate)
     return parsed && parsed.year === currentYear
   })
-  const closedBySource: Record<string, number> = {}
-  for (const d of ytdClosedDeals) {
-    const key = d.leadSource?.trim() || 'Unknown'
-    closedBySource[key] = (closedBySource[key] ?? 0) + parseMoney(d.amount)
+
+  // Revenue by Closer — reuses closedCashByEmail built above
+  const closerMapYtd: Record<string, { deals: number; revenue: number }> = {}
+  for (const a of rows) {
+    if (a.callOutcome !== 'WON') continue
+    const d = splitDate(a.dateIn)
+    if (!d || d.year !== currentYear) continue
+    const name = a.closer?.trim() || 'Unknown'
+    if (!closerMapYtd[name]) closerMapYtd[name] = { deals: 0, revenue: 0 }
+    closerMapYtd[name].deals++
+    const emailKey = a.email?.toLowerCase()
+    const cash = emailKey && closedCashByEmail.has(emailKey)
+      ? closedCashByEmail.get(emailKey)!
+      : parseMoney(a.cashCollected)
+    closerMapYtd[name].revenue += cash
   }
-  const totalCash = Object.values(closedBySource).reduce((s, v) => s + v, 0)
-  const SOURCE_PALETTE = ['#0ea5e9', '#f97316', '#10b981', '#6366f1', '#64748b']
-  const cashBySourceData = Object.entries(closedBySource)
-    .sort((a, b) => b[1] - a[1])
-    .map(([label, amount], i) => ({
-      label,
-      amount,
-      color: SOURCE_PALETTE[i % SOURCE_PALETTE.length],
-      pct: totalCash > 0 ? `${((amount / totalCash) * 100).toFixed(1)}%` : '0%',
-    }))
+  const closerData = Object.entries(closerMapYtd)
+    .sort((a, b) => b[1].revenue - a[1].revenue)
+    .map(([closer, v]) => ({ closer, deals: v.deals, revenue: v.revenue }))
 
   // Cash collected trend from Appointments (for cash trend chart)
   const cashTrend: CashTrendDataPoint[] = Array.from({ length: currentMonth + 1 }, (_, m) => ({
@@ -481,17 +501,17 @@ export default async function OverviewPage({
         <MonthlyChart data={monthlyData} />
       </div>
 
-      {/* Revenue trend + Revenue by source */}
+      {/* Deals & Revenue by Month + Revenue by Closer */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="col-span-2 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-          <h2 className="text-base font-semibold text-gray-900">Revenue trend</h2>
-          <p className="text-sm text-gray-400 mb-4">January–{currentMonthName} {currentYear} — revenue, cash collected & deals by month</p>
+          <h2 className="text-base font-semibold text-gray-900">Deals &amp; Revenue by Month</h2>
+          <p className="text-sm text-gray-400 mb-4">Deals closed · revenue contracted vs cash received</p>
           <RevenueTrendChart data={revTrend} />
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-          <h2 className="text-base font-semibold text-gray-900">Revenue by source</h2>
-          <p className="text-sm text-gray-400 mb-3">January–{currentMonthName} {currentYear} — from Closed Deals</p>
-          <CashBySourceDonut data={cashBySourceData} />
+          <h2 className="text-base font-semibold text-gray-900">Revenue by Closer</h2>
+          <p className="text-sm text-gray-400 mb-3">January–{currentMonthName} {currentYear} · cash collected per closer</p>
+          <CloserRevenueChart data={closerData} />
         </div>
       </div>
 
