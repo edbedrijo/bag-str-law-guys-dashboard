@@ -3,7 +3,7 @@ import type { AppointmentRow, LeadRow } from '@/types/appointments'
 
 const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID!
 const LEADS_RANGE = 'Leads!A2:N'
-const APPOINTMENTS_RANGE = 'Appointments!A2:Z'
+const APPOINTMENTS_RANGE = 'Appointments!A1:Z'
 
 function getAuth() {
   return new google.auth.GoogleAuth({
@@ -52,70 +52,125 @@ export async function getAppointments(): Promise<AppointmentRow[]> {
     range: APPOINTMENTS_RANGE,
   })
 
-  const rows = res.data.values ?? []
+  const allRows = res.data.values ?? []
+  if (allRows.length < 2) return []
 
-  return rows.map((r) => ({
-    contactId: r[0] ?? '',
-    appointmentId: r[1] ?? '',
-    firstName: r[2] ?? '',
-    lastName: r[3] ?? '',
-    email: r[4] ?? '',
-    phone: r[5] ?? '',
-    dateIn: r[6] ?? '',
-    callDate: r[7] ?? '',
-    callStatus: r[8] ?? '',
-    callOutcome: r[9] ?? '',
-    cashCollected: r[10] ?? '',
-    totalPrice: r[11] ?? '',
-    notesCash: r[12] ?? '',
-    setter: r[13] ?? '',
-    closer: r[14] ?? '',
-    leadQuality: r[15] ?? '',
-    callQuality: r[16] ?? '',
-    setterRecording: r[17] ?? '',
-    salesRecording: r[18] ?? '',
-    trafficSource: r[19] ?? '',
-    utmSource: r[20] ?? '',
-    utmCampaign: r[21] ?? '',
-    utmMedium: r[22] ?? '',
-    utmContent: r[23] ?? '',
-    notes: r[24] ?? '',
-    calendar: r[25] ?? '',
+  // Build name → index map from header row so column positions never need to be hardcoded
+  const headers = allRows[0] as string[]
+  const col = (name: string) => headers.findIndex((h) => h?.trim() === name)
+
+  const iContactId       = col('Contact Id')
+  const iAppointmentId   = col('Appointment Id')
+  const iFirstName       = col('First Name')
+  const iLastName        = col('Last Name')
+  const iEmail           = col('Email')
+  const iPhone           = col('Phone')
+  const iDateIn          = col('Date In')
+  const iCallDate        = col('Call Date (CDT)')
+  const iCallStatus      = col('Call Status')
+  const iCallOutcome     = col('Call Outcome')
+  const iCashCollected   = col('Cash Collected')
+  const iTotalPrice      = col('Total Price')
+  const iNotesCash       = col('Notes (Cash)')
+  const iSetter          = col('Setter')
+  const iCloser          = col('Closer')
+  const iLeadQuality     = col('Lead Quality')
+  const iCallQuality     = col('Call Quality')
+  const iSetterRecording = col('Setter Call Recording')
+  const iSalesRecording  = col('Sales Call Recording')
+  const iTrafficSource   = col('Traffic Source')
+  const iUtmSource       = col('UTM Source')
+  const iUtmCampaign     = col('UTM Campaign')
+  const iUtmMedium       = col('UTM Medium')
+  const iUtmContent      = col('UTM Content')
+  const iNotes           = col('Notes')
+  const iCalendar        = col('Calendar')
+
+  const get = (r: string[], i: number) => (i >= 0 ? (r[i] ?? '') : '')
+
+  return allRows.slice(1).map((r) => ({
+    contactId:       get(r, iContactId),
+    appointmentId:   get(r, iAppointmentId),
+    firstName:       get(r, iFirstName),
+    lastName:        get(r, iLastName),
+    email:           get(r, iEmail),
+    phone:           get(r, iPhone),
+    dateIn:          get(r, iDateIn),
+    callDate:        get(r, iCallDate),
+    callStatus:      get(r, iCallStatus),
+    callOutcome:     get(r, iCallOutcome),
+    cashCollected:   get(r, iCashCollected),
+    totalPrice:      get(r, iTotalPrice),
+    notesCash:       get(r, iNotesCash),
+    setter:          get(r, iSetter),
+    closer:          get(r, iCloser),
+    leadQuality:     get(r, iLeadQuality),
+    callQuality:     get(r, iCallQuality),
+    setterRecording: get(r, iSetterRecording),
+    salesRecording:  get(r, iSalesRecording),
+    trafficSource:   get(r, iTrafficSource),
+    utmSource:       get(r, iUtmSource),
+    utmCampaign:     get(r, iUtmCampaign),
+    utmMedium:       get(r, iUtmMedium),
+    utmContent:      get(r, iUtmContent),
+    notes:           get(r, iNotes),
+    calendar:        get(r, iCalendar),
   }))
 }
 
 export interface ClosedDealRow {
-  clientName:  string
-  matterType:  string
-  intakeDate:  string
-  amount:      string
-  referredBy:  string
-  leadSource:  string
-  email:       string
-  phone:       string
+  clientName:     string
+  matterType:     string
+  intakeDate:     string
+  amount:         string
+  cashCollected:  string
+  referredBy:     string
+  leadSource:     string
+  email:          string
+  phone:          string
 }
 
 export async function getClosedDeals(): Promise<ClosedDealRow[]> {
   const auth = getAuth()
   const sheets = google.sheets({ version: 'v4', auth })
 
+  // Fetch header row (row 22) + all data rows together so column positions
+  // are derived from names, not hardcoded indices — safe against sheet reordering.
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: 'Closed Deals!A23:I',  // row 23 = first data row; col A = index#, B-I = fields
+    range: 'Closed Deals!A22:Z',
   })
 
-  const rows = res.data.values ?? []
-  return rows
-    .filter((r) => r[1] && r[1].trim() !== '')  // skip rows with no client name (col B)
+  const allRows = res.data.values ?? []
+  if (allRows.length < 2) return []
+
+  // Build name → index map from header row
+  const headers = allRows[0] as string[]
+  const col = (name: string) => headers.findIndex((h) => h?.trim() === name)
+
+  const iClientName    = col('Client Name')
+  const iMatterType    = col('Matter Type')
+  const iIntakeDate    = col('Intake Date')
+  const iAmount        = col('Amount')
+  const iCashCollected = col('Cash Collected')
+  const iReferredBy    = col('Referred By')
+  const iLeadSource    = col('Lead Source')
+  const iEmail         = col('Email')
+  const iPhone         = col('Phone')
+
+  const dataRows = allRows.slice(1)
+  return dataRows
+    .filter((r) => iClientName >= 0 && r[iClientName]?.trim())
     .map((r) => ({
-      clientName: r[1] ?? '',  // B
-      matterType: r[2] ?? '',  // C
-      intakeDate: r[3] ?? '',  // D
-      amount:     r[4] ?? '',  // E
-      referredBy: r[5] ?? '',  // F
-      leadSource: r[6] ?? '',  // G
-      email:      r[7] ?? '',  // H
-      phone:      r[8] ?? '',  // I
+      clientName:    r[iClientName]    ?? '',
+      matterType:    r[iMatterType]    ?? '',
+      intakeDate:    r[iIntakeDate]    ?? '',
+      amount:        r[iAmount]        ?? '',
+      cashCollected: iCashCollected >= 0 ? (r[iCashCollected] ?? '') : '',
+      referredBy:    iReferredBy >= 0   ? (r[iReferredBy]    ?? '') : '',
+      leadSource:    iLeadSource >= 0   ? (r[iLeadSource]    ?? '') : '',
+      email:         iEmail >= 0        ? (r[iEmail]         ?? '') : '',
+      phone:         iPhone >= 0        ? (r[iPhone]         ?? '') : '',
     }))
 }
 
