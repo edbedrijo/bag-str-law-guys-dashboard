@@ -97,6 +97,42 @@ Data is sourced from the STR Law Guys Google Sheets Appointments tab and GHL CRM
 | Social Media Marketing | Social media performance |
 | Report Notes | Manual notes and commentary |
 
+## UI Standards — Input Fields & Tables
+> Apply these to every new form, modal, and data table built for this dashboard. Remind Ed of these rules whenever importing data from a sheet or building a new table.
+
+### Input fields
+
+**Phone**
+- Numbers only — block all non-digit input
+- Live format to `(xxx) xxx-xxxx` as user types; max 10 digits
+- Use `inputMode="numeric"` + `type="tel"`
+
+**Money (Amount, Cash Collected, any currency field)**
+- Digits and one decimal point only — block letters
+- Live comma formatting as user types: `898989` → `898,989`
+- On blur: always finalize to 2 decimal places — `1000` → `1,000.00`, `5964.5` → `5,964.50`
+- No `$` prefix inside the input itself
+- Use the `MoneyField` component in `DealModal.tsx` as the reference implementation
+
+**Dropdowns (for fields with known value sets)**
+- Populate options from existing sheet data — never hardcode static lists
+- Always include `+ Add New` at the bottom in teal (`text-teal-600`, `font-semibold`) — visually distinct from real options
+- Selecting `+ Add New` reveals a text input + Add button; Enter key confirms
+- Custom entries saved to `localStorage` per field and merged into the dropdown on next open
+- If a record's current value isn't in the list (legacy data), still show it selected — never lose data
+- Use the `SelectField` component in `DealModal.tsx` as the reference implementation
+
+### Data tables
+
+- **Blank cells**: show nothing — never use `—` as a placeholder
+- **Long text**: truncate with `...` (`overflow-hidden text-ellipsis whitespace-nowrap`); show full value on hover via `title` attribute (no extra package needed)
+- **Column headers**: always left-aligned
+- **Column reorder**: drag via grip icon (`GripVertical`) on the left of each header; save order to `localStorage`
+- **Column resize**: drag right edge of header; enforce `min 60px`; save widths to `localStorage`
+- **Sheet column reads**: always read the header row first and build a name→index map — never hardcode column positions (columns can be added/removed/reordered in the sheet)
+- **Default widths**: size columns so the table fills the container at default; use `minWidth: '100%'` on the table element
+- Use `ClosedDealsTable.tsx` as the reference implementation
+
 ## Environment Variables
 - All secrets in `.env` (never committed — listed in `.gitignore`)
 - See `.env.example` for required variable names and placeholder values

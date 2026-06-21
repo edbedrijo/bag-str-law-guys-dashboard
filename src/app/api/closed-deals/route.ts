@@ -14,17 +14,19 @@ function getAuth() {
 }
 
 function rowToValues(body: Record<string, string>, index: number): string[] {
-  // Sheet cols: A=#, B=ClientName, C=MatterType, D=IntakeDate, E=Amount, F=ReferredBy, G=LeadSource, H=Email, I=Phone
+  // Sheet cols: A=#, B=Client Name, C=Matter Type, D=Intake Date, E=Amount,
+  //             F=Cash Collected, G=Referred By, H=Lead Source, I=Email, J=Phone
   return [
     String(index),
-    body.clientName  ?? '',
-    body.matterType  ?? '',
-    body.intakeDate  ?? '',
-    body.amount      ?? '',
-    body.referredBy  ?? '',
-    body.leadSource  ?? '',
-    body.email       ?? '',
-    body.phone       ?? '',
+    body.clientName    ?? '',
+    body.matterType    ?? '',
+    body.intakeDate    ?? '',
+    body.amount        ?? '',
+    body.cashCollected ?? '',
+    body.referredBy    ?? '',
+    body.leadSource    ?? '',
+    body.email         ?? '',
+    body.phone         ?? '',
   ]
 }
 
@@ -57,7 +59,7 @@ export async function PUT(request: Request) {
   const body      = await request.json()
   const { rowIndex, ...fields } = body  // rowIndex = 0-based position in data array
   const sheetRow  = DATA_START_ROW + rowIndex
-  const range     = `Closed Deals!A${sheetRow}:I${sheetRow}`
+  const range     = `Closed Deals!A${sheetRow}:J${sheetRow}`
 
   const auth   = getAuth()
   const sheets = google.sheets({ version: 'v4', auth })
@@ -67,6 +69,40 @@ export async function PUT(request: Request) {
     range,
     valueInputOption: 'USER_ENTERED',
     requestBody: { values: [rowToValues(fields, rowIndex + 1)] },
+  })
+
+  return Response.json({ ok: true })
+}
+
+// DELETE — remove a deal row entirely by its 0-based array index
+export async function DELETE(request: Request) {
+  const { rowIndex } = await request.json()
+  const sheetRow = DATA_START_ROW + rowIndex  // 1-based sheet row number
+
+  const auth   = getAuth()
+  const sheets = google.sheets({ version: 'v4', auth })
+
+  // Look up the numeric sheetId for "Closed Deals" tab
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID })
+  const sheet = meta.data.sheets?.find((s) => s.properties?.title === 'Closed Deals')
+  const sheetId = sheet?.properties?.sheetId
+  if (sheetId == null) return Response.json({ ok: false, error: 'Sheet not found' }, { status: 404 })
+
+  // Delete the single row (0-based startIndex = sheetRow - 1)
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: SPREADSHEET_ID,
+    requestBody: {
+      requests: [{
+        deleteDimension: {
+          range: {
+            sheetId,
+            dimension: 'ROWS',
+            startIndex: sheetRow - 1,
+            endIndex:   sheetRow,
+          },
+        },
+      }],
+    },
   })
 
   return Response.json({ ok: true })
