@@ -52,7 +52,7 @@ function makeDelta(current: number, prior: number, label: string, invert = false
   return { diff, pct, label, invert }
 }
 
-function computeRangeKpis(leadRows: LeadRow[], rows: AppointmentRow[], range: ReturnType<typeof getDateRange>) {
+function computeRangeKpis(leadRows: LeadRow[], rows: AppointmentRow[], range: ReturnType<typeof getDateRange>, closedCashByEmail: Map<string, number> = new Map()) {
   const filteredLeads = leadRows.filter((r) => inRange(r.dateIn, range, splitDate))
   const leads = filteredLeads.length
 
@@ -62,7 +62,10 @@ function computeRangeKpis(leadRows: LeadRow[], rows: AppointmentRow[], range: Re
   )
   const booked   = new Set(bookedEligible.map((r) => r.email.toLowerCase())).size
   const showed   = filtered.filter((r) => r.callStatus === 'Showed').length
-  const cash     = filtered.filter((r) => r.callOutcome === 'WON').reduce((sum, r) => sum + parseMoney(r.cashCollected), 0)
+  const cash     = filtered.filter((r) => r.callOutcome === 'WON').reduce((sum, r) => {
+    const emailKey = r.email?.toLowerCase()
+    return sum + (emailKey && closedCashByEmail.has(emailKey) ? closedCashByEmail.get(emailKey)! : parseMoney(r.cashCollected))
+  }, 0)
   const noShows  = filtered.filter((r) => r.callStatus === 'No Show').length
   const cancelled = filtered.filter((r) => r.callStatus === 'Cancelled').length
 
@@ -134,16 +137,16 @@ export default async function OverviewPage({
   ])
 
   // ── Top tile KPIs from Appointments tab ─────────────────────────────────────
-  const cur  = computeRangeKpis(leadRows, rows, range)
-  const prev = computeRangeKpis(leadRows, rows, priorRange)
-
-  // Build closed deals cash map early (needed for orphan cash computation)
-  const overviewClosedCashByEmail = new Map(
+  // Build closed deals cash map so the appointment loop prefers the more accurate sheet value
+  const closedCashByEmail = new Map(
     closedDeals
       .filter((d) => d.email && parseMoney(d.cashCollected) > 0)
       .map((d) => [d.email.toLowerCase(), parseMoney(d.cashCollected)])
   )
-  // WON appointment emails in range (already counted by computeRangeKpis)
+  const cur  = computeRangeKpis(leadRows, rows, range, closedCashByEmail)
+  const prev = computeRangeKpis(leadRows, rows, priorRange, closedCashByEmail)
+
+  // WON appointment emails already counted in cur — track to avoid double-counting orphans
   const wonEmailsInRange = new Set(
     cur.filtered.filter((r) => r.callOutcome === 'WON' && r.email).map((r) => r.email!.toLowerCase())
   )
