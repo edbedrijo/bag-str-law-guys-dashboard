@@ -55,7 +55,7 @@ export default function ClosedDealsCharts({ monthly, bySource, byMatter, byClose
               contentStyle={{ fontSize: 13, borderRadius: 8, border: '1px solid #e2e8f0' }}
             />
             <Legend wrapperStyle={{ fontSize: 13, paddingTop: 12 }} />
-            <Bar yAxisId="deals" dataKey="deals" name="Deals" fill="#a5b4fc" radius={[4, 4, 0, 0]} barSize={28} />
+            <Bar yAxisId="deals" dataKey="deals" name="Deals" fill="#818cf8" radius={[4, 4, 0, 0]} barSize={28} />
             <Line yAxisId="money" type="monotone" dataKey="revenue" name="Revenue"       stroke="#6366f1" strokeWidth={2.5} dot={{ r: 4, fill: '#6366f1' }} activeDot={{ r: 6 }} />
             <Line yAxisId="money" type="monotone" dataKey="cash"    name="Cash Collected" stroke="#10b981" strokeWidth={2.5} dot={{ r: 4, fill: '#10b981' }} activeDot={{ r: 6 }} strokeDasharray="5 3" />
           </ComposedChart>
