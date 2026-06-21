@@ -286,12 +286,7 @@ export default async function OverviewPage({
     return parsed && parsed.year === currentYear
   })
 
-  // Revenue by Closer — Appointments tab WON rows, prefer Closed Deals cash by email
-  const closedCashByEmail = new Map(
-    closedDeals
-      .filter((d) => d.email && parseMoney(d.cashCollected) > 0)
-      .map((d) => [d.email.toLowerCase(), parseMoney(d.cashCollected)])
-  )
+  // Revenue by Closer — reuses closedCashByEmail built above
   const closerMapYtd: Record<string, { deals: number; revenue: number }> = {}
   for (const a of rows) {
     if (a.callOutcome !== 'WON') continue
