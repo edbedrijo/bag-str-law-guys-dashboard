@@ -125,13 +125,23 @@ Data is sourced from the STR Law Guys Google Sheets Appointments tab and GHL CRM
 ### Data tables
 
 - **Blank cells**: show nothing — never use `—` as a placeholder
-- **Long text**: truncate with `...` (`overflow-hidden text-ellipsis whitespace-nowrap`); show full value on hover via `title` attribute (no extra package needed)
-- **Column headers**: always left-aligned
-- **Column reorder**: drag via grip icon (`GripVertical`) on the left of each header; save order to `localStorage`
+- **Long text**: truncate with `...` (`overflow-hidden text-ellipsis whitespace-nowrap max-w-0`); show full value on hover via `title` attribute
+- **Column headers**: always left-aligned; `bg-gray-50`; `sticky top-0 z-20`
+- **Cell padding**: `px-3 py-1.5` (compact rows)
+- **Borders**: `border-collapse` on table; `border border-gray-200` on every `<th>` and `<td>`
+- **Row hover**: `hover:bg-blue-50/40 cursor-pointer` — all rows are clickable to open edit modal
+- **Edit column**: sticky right (`sticky right-0 z-10 bg-white`), always visible regardless of horizontal scroll; pencil icon (`Pencil` size 14) opens modal on click
+- **Scroll container**: `overflow-x-auto` with `maxHeight: calc(100vh - Npx)` so horizontal scrollbar stays visible at bottom of table, not bottom of page
+- **Filters**: use `StatusMultiSelect` (checkbox dropdown) for all filter controls — never single-select `<select>` dropdowns. Button shows "All X" when empty, the value when one selected, "N selected" when multiple. Turns teal when active. Includes a Clear button inside the dropdown. See `AppointmentsTable.tsx` as reference.
+- **Pagination**: 20/50/100 per page dropdown; Prev / current page / Next footer; reset to page 1 on filter or sort change
+- **Sort**: sortable columns show `ArrowUpDown` / `ArrowUp` / `ArrowDown` icons in header; click to toggle asc/desc
+- **Column reorder**: drag via grip icon (`GripVertical`) on the left of each header; save order to `localStorage` with versioned key (bump version when default order changes)
 - **Column resize**: drag right edge of header; enforce `min 60px`; save widths to `localStorage`
-- **Sheet column reads**: always read the header row first and build a name→index map — never hardcode column positions (columns can be added/removed/reordered in the sheet)
+- **originalIndex tracking**: always map `rawRows` to `{ row, originalIndex }` before filtering/sorting so write-back API calls hit the correct sheet row
+- **Sheet column reads**: always read the header row first and build a name→index map — never hardcode column positions
 - **Default widths**: size columns so the table fills the container at default; use `minWidth: '100%'` on the table element
-- Use `ClosedDealsTable.tsx` as the reference implementation
+- **Modal**: rendered once at table level driven by `openIdx` state — not per-row; `ApptModal` / `DealModal` exported for this purpose
+- Use `ClosedDealsTable.tsx` and `AppointmentsTable.tsx` as the reference implementations
 
 ## Environment Variables
 - All secrets in `.env` (never committed — listed in `.gitignore`)

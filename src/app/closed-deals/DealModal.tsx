@@ -97,7 +97,7 @@ interface ModalProps {
   onClose:   () => void
 }
 
-function DealModal({ mode, rowIndex, initial, options, onClose }: ModalProps) {
+export function DealModal({ mode, rowIndex, initial, options, onClose }: ModalProps) {
   const router = useRouter()
   const [form,      setForm]      = useState<DealFields>(initial ?? EMPTY)
   const [saving,    setSaving]    = useState(false)
