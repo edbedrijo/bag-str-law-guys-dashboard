@@ -21,6 +21,7 @@ import {
 
 const NAV_ITEMS = [
   { label: 'Overview',               href: '/',                 icon: LayoutDashboard },
+  { label: 'Appointments',           href: '/appointments',     icon: CalendarDays },
   { label: 'Closed Deals',           href: '/closed-deals',     icon: Trophy },
   { label: 'Funnel',                 href: '/funnel',           icon: Filter },
   { label: 'By Source',              href: '/by-source',        icon: Users },
