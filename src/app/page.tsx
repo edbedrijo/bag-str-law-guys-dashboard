@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { Suspense } from 'react'
 import { getLeads, getAppointments, getCeoDashboard, getClosedDeals } from '@/lib/sheets'
-import { getMonthlyAdSpend, getMonthlyLeads } from '@/lib/ghl'
+import { getMonthlyAdSpend, getMonthlyLeads, getLeadsForRange } from '@/lib/ghl'
 import { getDateRange, getPriorRange, inRange, type DateRangePreset } from '@/lib/dateRange'
 import KpiCard from '@/components/KpiCard'
 import MonthlyChart from '@/components/MonthlyChart'
@@ -128,13 +128,18 @@ export default async function OverviewPage({
   const range      = getDateRange(preset, now)
   const priorRange = getPriorRange(preset, now)
 
-  const [leadRows, rows, ceoDash, ghlAdSpend, closedDeals, ghlLeadsMtd] = await Promise.all([
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const isoDate = (p: { year: number; month: number; day: number }) =>
+    `${p.year}-${pad(p.month + 1)}-${pad(p.day)}`
+
+  const [leadRows, rows, ceoDash, ghlAdSpend, closedDeals, ghlLeadsMtd, ghlLeadsRange] = await Promise.all([
     getLeads(),
     getAppointments(),
     getCeoDashboard(),
     getMonthlyAdSpend(currentYear, currentMonth),
     getClosedDeals(),
     getMonthlyLeads(currentYear, currentMonth),
+    getLeadsForRange(isoDate(range.start), isoDate(range.end)),
   ])
 
   // ── Top tile KPIs from Appointments tab ─────────────────────────────────────
@@ -174,7 +179,7 @@ export default async function OverviewPage({
 
   const dl = priorRange.label
   const deltas = {
-    leads:        makeDelta(cur.leads,          prev.leads,          dl),
+    leads:        makeDelta(ghlLeadsRange.total, prev.leads,          dl),
     booked:       makeDelta(cur.booked,         prev.booked,         dl),
     showed:       makeDelta(cur.showed,         prev.showed,         dl),
     dealsClosed:  makeDelta(closedDealsInRange, prevClosedDealsInRange, dl),
@@ -204,7 +209,7 @@ export default async function OverviewPage({
   const mtdEnd   = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
 
   // MTD leads from GHL CRM contacts — same source as Ad Spend page so the numbers agree.
-  const mtdLeads  = ghlLeadsMtd
+  const mtdLeads  = ghlLeadsMtd.total
   const mtdBooked = ceoDash.weekly.reduce((sum, w) => sum + w.booked, 0)
   const mtdShowed = ceoDash.weekly.reduce((sum, w) => sum + w.showed, 0)
 
@@ -232,10 +237,18 @@ export default async function OverviewPage({
     // Show rate computed live
     const sr = w.booked > 0 ? `${((w.showed / w.booked) * 100).toFixed(2)}%` : '0%'
 
+    // Leads from GHL CRM byDate — same source as the Leads tile and Ad Spend page
+    const ghlLeadsThisWeek = week
+      ? Object.entries(ghlLeadsMtd.byDate).reduce((sum, [day, count]) => {
+          const ms = Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10))
+          return ms >= week.start && ms <= week.end ? sum + count : sum
+        }, 0)
+      : 0
+
     return {
       label:     w.period,
       adSpend:   ghlSpendByWeek[i] ?? 0,
-      leads:     w.leads,
+      leads:     ghlLeadsThisWeek,
       booked:    w.booked,
       showed:    w.showed,
       noShows:   w.noShows,
@@ -376,7 +389,16 @@ export default async function OverviewPage({
           <p className="text-xs text-gray-400">Filtered by selected date range</p>
         </div>
         <Suspense>
-          <DateRangePicker current={preset} />
+          <div className="flex flex-col items-end gap-1">
+            <DateRangePicker current={preset} />
+            <span className="text-[11px] text-gray-400">
+              {(() => {
+                const fmt2 = (p: { year: number; month: number; day: number }) =>
+                  new Date(p.year, p.month, p.day).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                return `${fmt2(range.start)} – ${fmt2(range.end)}`
+              })()}
+            </span>
+          </div>
         </Suspense>
       </div>
 
@@ -384,7 +406,7 @@ export default async function OverviewPage({
       <div className="grid grid-cols-6 gap-3 mb-8">
         <KpiCard
           label="Leads"
-          value={leads.toLocaleString()}
+          value={ghlLeadsRange.total.toLocaleString()}
           sub={range.label}
           icon={Users}
           iconColor="text-teal-500"
@@ -393,7 +415,7 @@ export default async function OverviewPage({
         <KpiCard
           label="Calls Booked"
           value={booked.toLocaleString()}
-          sub={`${leads > 0 ? ((booked / leads) * 100).toFixed(1) : 0}% of leads`}
+          sub={`${ghlLeadsRange.total > 0 ? ((booked / ghlLeadsRange.total) * 100).toFixed(1) : 0}% of leads`}
           icon={CalendarDays}
           iconColor="text-cyan-500"
           delta={deltas.booked}
