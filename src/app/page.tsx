@@ -380,10 +380,15 @@ export default async function OverviewPage({
 
   return (
     <div>
-      {/* Page header with date range picker top-right */}
-      <Suspense>
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Overview</h1>
+      <h1 className="text-2xl font-bold text-gray-900 mb-6">Overview</h1>
+
+      {/* Period Performance — section header with date filter */}
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Period Performance</h2>
+          <p className="text-xs text-gray-400">Filtered by selected date range</p>
+        </div>
+        <Suspense>
           <div className="flex flex-col items-end gap-1">
             <DateRangePicker current={preset} />
             <span className="text-[11px] text-gray-400">
@@ -394,13 +399,7 @@ export default async function OverviewPage({
               })()}
             </span>
           </div>
-        </div>
-      </Suspense>
-
-      {/* Period Performance — section header */}
-      <div className="mb-3">
-        <h2 className="text-base font-semibold text-gray-900">Period Performance</h2>
-        <p className="text-xs text-gray-400">Filtered by selected date range</p>
+        </Suspense>
       </div>
 
       {/* 6 KPI tiles — date-filter driven */}
