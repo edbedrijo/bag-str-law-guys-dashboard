@@ -396,18 +396,22 @@ export async function GET(request: Request) {
 
   const hasPrior = !!(priorStartDate && priorEndDate)
 
-  const [daily, currentCamp, priorCamp, currentLeads] = await Promise.all([
+  const [daily, currentCamp, priorCamp, currentLeads, priorLeads] = await Promise.all([
     fetchDailyData(pit, locationId, startDate, endDate, aggregate),
     fetchCampaignData(pit, locationId, startDate, endDate),
     hasPrior ? fetchCampaignData(pit, locationId, priorStartDate!, priorEndDate!) : Promise.resolve(null),
     fetchContactLeads(pit, locationId, startDate, endDate),
+    hasPrior ? fetchContactLeads(pit, locationId, priorStartDate!, priorEndDate!) : Promise.resolve(null),
   ])
 
-  // Use Facebook pixel leads (offsiteConversion.fbPixelLead) so the tile and table
-  // match GHL's Meta Ads report exactly. The contact-based count (currentLeads) is
-  // kept only for the daily chart breakdown (leadsByDate) — the one source with
-  // per-day granularity.
-  const campaigns: CampaignRow[] = currentCamp.campaigns
+  // Leads use the CRM contacts source (contacts tagged "ads" with campaign attribution),
+  // the same source as the daily chart's leadsByDate — so the tile, table, and chart all
+  // agree. Falls back to the campaign-crawl FB leads only if the contacts search failed.
+  const campaigns: CampaignRow[] = currentCamp.campaigns.map((c) => {
+    const contactLeads = currentLeads?.byCampaign[c.campaignId]
+    if (contactLeads === undefined) return c
+    return { ...c, leads: contactLeads, cpl: contactLeads > 0 ? c.spend / contactLeads : 0 }
+  })
 
   // Tile totals derived from campaign rows — single source of truth so tiles and table always agree.
   // Aggregated API (Endpoint 1) is only used for the daily chart breakdown above.
@@ -415,7 +419,7 @@ export async function GET(request: Request) {
   const totalImpressions = campaigns.reduce((s, c) => s + c.impressions, 0)
   const totalClicks      = campaigns.reduce((s, c) => s + c.clicks, 0)
   const totalBudget      = campaigns.reduce((s, c) => s + c.budget, 0)
-  const leads            = currentCamp.totalLeads
+  const leads            = currentLeads?.total ?? currentCamp.totalLeads
 
   const totals: AdSpendTotals = {
     spend:       totalSpend,
@@ -436,7 +440,7 @@ export async function GET(request: Request) {
     const pImpressions = pc.reduce((s, c) => s + c.impressions, 0)
     const pClicks      = pc.reduce((s, c) => s + c.clicks, 0)
     const pBudget      = pc.reduce((s, c) => s + c.budget, 0)
-    const pLeads       = priorCamp.totalLeads
+    const pLeads       = priorLeads?.total ?? priorCamp.totalLeads
     priorTotals = {
       spend:       pSpend,
       impressions: pImpressions,
