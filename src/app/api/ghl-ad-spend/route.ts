@@ -325,8 +325,11 @@ async function fetchOneDayChunk(
   }))
 }
 
-// For long ranges, chunks by month and aggregates daily results into monthly totals.
-// For short ranges (≤31 days), single call returning daily data.
+// GHL's groupBy=day reporting endpoint caps its response at 25 days and silently
+// drops the rest, so split any range into <=20-day chunks, fetch in parallel, and
+// merge. For monthly aggregation the merged daily rows are rolled up by month.
+const MAX_CHUNK_DAYS = 20
+
 async function fetchDailyData(
   pit: string,
   locationId: string,
@@ -336,21 +339,18 @@ async function fetchDailyData(
 ): Promise<DailyMetric[]> {
   const start = new Date(startDate + 'T00:00:00')
   const end   = new Date(endDate   + 'T00:00:00')
-  const days  = Math.round((end.getTime() - start.getTime()) / 86400000) + 1
 
-  if (days <= 31) {
-    return fetchOneDayChunk(pit, locationId, startDate, endDate)
-  }
-
-  // Build month chunks
+  // Build <=MAX_CHUNK_DAYS chunks covering the whole range
   const chunks: { start: string; end: string }[] = []
-  const cur = new Date(start.getFullYear(), start.getMonth(), 1)
+  const cur = new Date(start)
   while (cur <= end) {
-    const chunkStart = cur < start ? startDate : cur.toISOString().slice(0, 10)
-    const lastOfMonth = new Date(cur.getFullYear(), cur.getMonth() + 1, 0)
-    const chunkEnd = lastOfMonth > end ? endDate : lastOfMonth.toISOString().slice(0, 10)
-    chunks.push({ start: chunkStart, end: chunkEnd })
-    cur.setMonth(cur.getMonth() + 1)
+    const chunkStart = new Date(cur)
+    const chunkEnd   = new Date(cur)
+    chunkEnd.setDate(chunkEnd.getDate() + MAX_CHUNK_DAYS - 1)
+    if (chunkEnd > end) chunkEnd.setTime(end.getTime())
+    const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    chunks.push({ start: fmt(chunkStart), end: fmt(chunkEnd) })
+    cur.setDate(cur.getDate() + MAX_CHUNK_DAYS)
   }
 
   // Fetch all chunks in parallel
