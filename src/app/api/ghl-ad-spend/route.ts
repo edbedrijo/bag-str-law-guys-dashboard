@@ -162,36 +162,6 @@ async function fetchContactLeads(
   return { total, byCampaign, byDate }
 }
 
-// Fetches aggregated totals for a date range (spend, impressions, clicks, cpc).
-// Leads come from fetchContactLeads, not this endpoint.
-async function fetchAggTotals(
-  pit: string,
-  locationId: string,
-  startDate: string,
-  endDate: string,
-): Promise<{ spend: number; impressions: number; clicks: number } | null> {
-  const url = `${GHL_BASE}/ad-publishing/facebook/reporting`
-    + `?locationId=${encodeURIComponent(locationId)}`
-    + `&fields=impressions,clicks,spend,cpc,ctr,conversions,cost_per_conversion`
-    + `&groupBy=day`
-    + `&startDate=${startDate}`
-    + `&endDate=${endDate}`
-    + `&type=INTEGRATION`
-
-  const res = await fetch(url, { headers: ghlHeaders(pit), cache: 'no-store' })
-  if (!res.ok) return null
-
-  const data = await res.json()
-  const t     = data.totals ?? {}
-  const daily: Array<Record<string, string>> = data.grouped ?? []
-
-  return {
-    spend:       num(t.spend)       || daily.reduce((s, d) => s + num(d.spend), 0),
-    impressions: num(t.impressions) || daily.reduce((s, d) => s + num(d.impressions), 0),
-    clicks:      num(t.clicks)      || daily.reduce((s, d) => s + num(d.clicks), 0),
-  }
-}
-
 // Fetches all campaigns and their adset-level metrics for a date range.
 // Returns aggregated CampaignRow[] and total leads count.
 async function fetchCampaignData(

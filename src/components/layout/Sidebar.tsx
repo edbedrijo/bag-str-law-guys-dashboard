@@ -15,6 +15,7 @@ import {
   Mail,
   Share2,
   FileText,
+  TrendingUp,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
@@ -23,6 +24,7 @@ const NAV_ITEMS = [
   { label: 'Overview',               href: '/',                 icon: LayoutDashboard },
   { label: 'Appointments',           href: '/appointments',     icon: CalendarDays },
   { label: 'Closed Deals',           href: '/closed-deals',     icon: Trophy },
+  { label: 'Ad Spend',               href: '/ad-spend',         icon: TrendingUp },
   { label: 'Funnel',                 href: '/funnel',           icon: Filter },
   { label: 'By Source',              href: '/by-source',        icon: Users },
   { label: 'Weekly Calls',           href: '/weekly-calls',     icon: CalendarDays },
