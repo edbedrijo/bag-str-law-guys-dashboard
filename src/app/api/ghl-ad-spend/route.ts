@@ -250,20 +250,9 @@ async function fetchCampaignData(
         const s  = num(adset.spend)
         const im = num(adset.impressions)
         const cl = num(adset.clicks)
-        // Adset-level results can undercount leads vs GHL's report. The accurate count
-        // (matching GHL) comes from summing ad-level pixel leads, so crawl ads per adset.
-        let le = extractLeads(adset.results)
-        if (adsetId) {
-          const adParams = new URLSearchParams({ locationId, listType: 'ads', adSetId: adsetId, campaignId: camp.campaignId, startDate, endDate, type: 'INTEGRATION' })
-          const adRes = await fetch(`${GHL_BASE}/ad-publishing/facebook/reporting/list?${adParams}`, { headers: ghlHeaders(pit), cache: 'no-store' })
-          if (adRes.ok) {
-            const adData = await adRes.json()
-            const adList: Array<Record<string, unknown>> =
-              Array.isArray(adData) ? adData : adData.ads ?? adData.data ?? []
-            const adLeads = adList.reduce((sum, ad) => sum + (num(ad.leads) || extractLeads(ad.results)), 0)
-            if (adLeads > le) le = adLeads
-          }
-        }
+        // Use the adset-level `leads` field (Facebook's reported lead count) so the
+        // tile and table match GHL's Meta Ads report. Fall back to pixel `results`.
+        const le = num(adset.leads) || extractLeads(adset.results)
         totalSpend       += s
         totalImpressions += im
         totalClicks      += cl
