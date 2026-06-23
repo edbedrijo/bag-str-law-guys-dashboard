@@ -384,7 +384,7 @@ export default async function OverviewPage({
       <div className="grid grid-cols-6 gap-3 mb-8">
         <KpiCard
           label="Leads"
-          value={leads.toLocaleString()}
+          value={ghlLeadsMtd.toLocaleString()}
           sub={range.label}
           icon={Users}
           iconColor="text-teal-500"
@@ -393,7 +393,7 @@ export default async function OverviewPage({
         <KpiCard
           label="Calls Booked"
           value={booked.toLocaleString()}
-          sub={`${leads > 0 ? ((booked / leads) * 100).toFixed(1) : 0}% of leads`}
+          sub={`${ghlLeadsMtd > 0 ? ((booked / ghlLeadsMtd) * 100).toFixed(1) : 0}% of leads`}
           icon={CalendarDays}
           iconColor="text-cyan-500"
           delta={deltas.booked}
