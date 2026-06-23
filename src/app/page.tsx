@@ -397,6 +397,12 @@ export default async function OverviewPage({
         </div>
       </div>
 
+      {/* Period Performance — section header */}
+      <div className="mb-3">
+        <h2 className="text-base font-semibold text-gray-900">Period Performance</h2>
+        <p className="text-xs text-gray-400">Filtered by selected date range</p>
+      </div>
+
       {/* 6 KPI tiles — date-filter driven */}
       <div className="grid grid-cols-6 gap-3 mb-8">
         <KpiCard
