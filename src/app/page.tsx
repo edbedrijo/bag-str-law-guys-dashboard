@@ -204,7 +204,7 @@ export default async function OverviewPage({
   const mtdEnd   = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
 
   // MTD leads from GHL CRM contacts — same source as Ad Spend page so the numbers agree.
-  const mtdLeads  = ghlLeadsMtd
+  const mtdLeads  = ghlLeadsMtd.total
   const mtdBooked = ceoDash.weekly.reduce((sum, w) => sum + w.booked, 0)
   const mtdShowed = ceoDash.weekly.reduce((sum, w) => sum + w.showed, 0)
 
@@ -232,10 +232,18 @@ export default async function OverviewPage({
     // Show rate computed live
     const sr = w.booked > 0 ? `${((w.showed / w.booked) * 100).toFixed(2)}%` : '0%'
 
+    // Leads from GHL CRM byDate — same source as the Leads tile and Ad Spend page
+    const ghlLeadsThisWeek = week
+      ? Object.entries(ghlLeadsMtd.byDate).reduce((sum, [day, count]) => {
+          const ms = Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10))
+          return ms >= week.start && ms <= week.end ? sum + count : sum
+        }, 0)
+      : 0
+
     return {
       label:     w.period,
       adSpend:   ghlSpendByWeek[i] ?? 0,
-      leads:     w.leads,
+      leads:     ghlLeadsThisWeek,
       booked:    w.booked,
       showed:    w.showed,
       noShows:   w.noShows,
@@ -384,7 +392,7 @@ export default async function OverviewPage({
       <div className="grid grid-cols-6 gap-3 mb-8">
         <KpiCard
           label="Leads"
-          value={ghlLeadsMtd.toLocaleString()}
+          value={ghlLeadsMtd.total.toLocaleString()}
           sub={range.label}
           icon={Users}
           iconColor="text-teal-500"
@@ -393,7 +401,7 @@ export default async function OverviewPage({
         <KpiCard
           label="Calls Booked"
           value={booked.toLocaleString()}
-          sub={`${ghlLeadsMtd > 0 ? ((booked / ghlLeadsMtd) * 100).toFixed(1) : 0}% of leads`}
+          sub={`${ghlLeadsMtd.total > 0 ? ((booked / ghlLeadsMtd.total) * 100).toFixed(1) : 0}% of leads`}
           icon={CalendarDays}
           iconColor="text-cyan-500"
           delta={deltas.booked}

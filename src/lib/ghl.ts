@@ -105,13 +105,19 @@ export async function getMonthlyAdSpend(year: number, month: number): Promise<{
   }
 }
 
+export interface MonthlyLeads {
+  total:  number
+  byDate: Record<string, number>  // YYYY-MM-DD → count (account TZ day)
+}
+
 // Counts CRM contacts tagged "ads" created this month — same source as Ad Spend page's
 // leads tile so Overview and Ad Spend always show the same number.
-export async function getMonthlyLeads(year: number, month: number): Promise<number> {
+// Returns total and a per-day breakdown so callers can bucket by week.
+export async function getMonthlyLeads(year: number, month: number): Promise<MonthlyLeads> {
   const pit        = process.env.GHL_PIT_STR
   const locationId = process.env.GHL_LOCATION_ID_STR
 
-  if (!pit || !locationId) return 0
+  if (!pit || !locationId) return { total: 0, byDate: {} }
 
   const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`
   const lastDay   = new Date(year, month + 1, 0).getDate()
@@ -125,6 +131,7 @@ export async function getMonthlyLeads(year: number, month: number): Promise<numb
   const lte = zonedMs(endDate,  23, 59, 59, 999)
 
   const byCampaign: Record<string, number> = {}
+  const byDate:     Record<string, number> = {}
   const PAGE_LIMIT = 100
   const MAX_PAGES  = 20
 
@@ -151,23 +158,33 @@ export async function getMonthlyLeads(year: number, month: number): Promise<numb
 
       if (!res.ok) {
         console.error('[ghl] contacts search error', res.status)
-        return 0
+        return { total: 0, byDate: {} }
       }
 
       const data = await res.json()
-      const contacts: Array<{ attributionSource?: { campaignId?: string }; lastAttributionSource?: { campaignId?: string } }> = data.contacts ?? []
+      const contacts: Array<{
+        dateAdded?: string
+        attributionSource?:     { campaignId?: string }
+        lastAttributionSource?: { campaignId?: string }
+      }> = data.contacts ?? []
 
       for (const c of contacts) {
         const cid = c.attributionSource?.campaignId ?? c.lastAttributionSource?.campaignId
-        if (cid) byCampaign[cid] = (byCampaign[cid] ?? 0) + 1
+        if (!cid) continue
+        byCampaign[cid] = (byCampaign[cid] ?? 0) + 1
+        if (c.dateAdded) {
+          const day = zonedDay(new Date(c.dateAdded))
+          byDate[day] = (byDate[day] ?? 0) + 1
+        }
       }
 
       if (contacts.length < PAGE_LIMIT) break
     }
   } catch (err) {
     console.error('[ghl] leads fetch failed:', err)
-    return 0
+    return { total: 0, byDate: {} }
   }
 
-  return Object.values(byCampaign).reduce((s, n) => s + n, 0)
+  const total = Object.values(byCampaign).reduce((s, n) => s + n, 0)
+  return { total, byDate }
 }
