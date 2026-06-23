@@ -407,7 +407,7 @@ export default function AdSpendPage() {
                 contentStyle={{ fontSize: 11, borderRadius: 6, border: '1px solid #e5e7eb' }}
               />
               <Area
-                type="monotone"
+                type="linear"
                 dataKey={chartMetric}
                 stroke={chartOption.color}
                 strokeWidth={2}
