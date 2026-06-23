@@ -273,8 +273,8 @@ function AdSpendInner() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <PageHeader title="Ad Spend" />
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Ad Spend</h1>
         <div className="flex flex-col items-end gap-1">
           <DateRangePicker current={preset} />
           <span className="text-[11px] text-gray-400">

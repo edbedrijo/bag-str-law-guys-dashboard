@@ -85,15 +85,24 @@ export default async function AppointmentsPage({
     <>
       <PageHeader title="Appointments" />
 
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <h2 className="text-base font-semibold text-gray-900">Period Performance</h2>
-          <p className="text-xs text-gray-400">Filtered by selected date range · Date In</p>
+      <Suspense>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Period Performance</h2>
+            <p className="text-xs text-gray-400">Filtered by selected date range · Date In</p>
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            <DateRangePicker current={preset} />
+            <span className="text-[11px] text-gray-400">
+              {(() => {
+                const fmt2 = (p: { year: number; month: number; day: number }) =>
+                  new Date(p.year, p.month, p.day).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                return `${fmt2(range.start)} – ${fmt2(range.end)}`
+              })()}
+            </span>
+          </div>
         </div>
-        <Suspense>
-          <DateRangePicker current={preset} />
-        </Suspense>
-      </div>
+      </Suspense>
 
       <div className="grid grid-cols-5 gap-4 mb-6">
         <KpiCard
