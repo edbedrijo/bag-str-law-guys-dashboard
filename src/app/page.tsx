@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { Suspense } from 'react'
 import { getLeads, getAppointments, getCeoDashboard, getClosedDeals } from '@/lib/sheets'
-import { getMonthlyAdSpend, getMonthlyLeads } from '@/lib/ghl'
+import { getMonthlyAdSpend, getMonthlyLeads, getLeadsForRange } from '@/lib/ghl'
 import { getDateRange, getPriorRange, inRange, type DateRangePreset } from '@/lib/dateRange'
 import KpiCard from '@/components/KpiCard'
 import MonthlyChart from '@/components/MonthlyChart'
@@ -128,13 +128,18 @@ export default async function OverviewPage({
   const range      = getDateRange(preset, now)
   const priorRange = getPriorRange(preset, now)
 
-  const [leadRows, rows, ceoDash, ghlAdSpend, closedDeals, ghlLeadsMtd] = await Promise.all([
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const isoDate = (p: { year: number; month: number; day: number }) =>
+    `${p.year}-${pad(p.month + 1)}-${pad(p.day)}`
+
+  const [leadRows, rows, ceoDash, ghlAdSpend, closedDeals, ghlLeadsMtd, ghlLeadsRange] = await Promise.all([
     getLeads(),
     getAppointments(),
     getCeoDashboard(),
     getMonthlyAdSpend(currentYear, currentMonth),
     getClosedDeals(),
     getMonthlyLeads(currentYear, currentMonth),
+    getLeadsForRange(isoDate(range.start), isoDate(range.end)),
   ])
 
   // ── Top tile KPIs from Appointments tab ─────────────────────────────────────
@@ -174,7 +179,7 @@ export default async function OverviewPage({
 
   const dl = priorRange.label
   const deltas = {
-    leads:        makeDelta(cur.leads,          prev.leads,          dl),
+    leads:        makeDelta(ghlLeadsRange.total, prev.leads,          dl),
     booked:       makeDelta(cur.booked,         prev.booked,         dl),
     showed:       makeDelta(cur.showed,         prev.showed,         dl),
     dealsClosed:  makeDelta(closedDealsInRange, prevClosedDealsInRange, dl),
@@ -375,24 +380,28 @@ export default async function OverviewPage({
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Overview</h1>
-
-      {/* Period Performance — section header with date filter */}
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <h2 className="text-base font-semibold text-gray-900">Period Performance</h2>
-          <p className="text-xs text-gray-400">Filtered by selected date range</p>
+      {/* Page header with date range picker top-right */}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Overview</h1>
+        <div className="flex flex-col items-end gap-1">
+          <Suspense>
+            <DateRangePicker current={preset} />
+          </Suspense>
+          <span className="text-[11px] text-gray-400">
+            {(() => {
+              const fmt2 = (p: { year: number; month: number; day: number }) =>
+                new Date(p.year, p.month, p.day).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+              return `${fmt2(range.start)} – ${fmt2(range.end)}`
+            })()}
+          </span>
         </div>
-        <Suspense>
-          <DateRangePicker current={preset} />
-        </Suspense>
       </div>
 
       {/* 6 KPI tiles — date-filter driven */}
       <div className="grid grid-cols-6 gap-3 mb-8">
         <KpiCard
           label="Leads"
-          value={leads.toLocaleString()}
+          value={ghlLeadsRange.total.toLocaleString()}
           sub={range.label}
           icon={Users}
           iconColor="text-teal-500"
@@ -401,7 +410,7 @@ export default async function OverviewPage({
         <KpiCard
           label="Calls Booked"
           value={booked.toLocaleString()}
-          sub={`${leads > 0 ? ((booked / leads) * 100).toFixed(1) : 0}% of leads`}
+          sub={`${ghlLeadsRange.total > 0 ? ((booked / ghlLeadsRange.total) * 100).toFixed(1) : 0}% of leads`}
           icon={CalendarDays}
           iconColor="text-cyan-500"
           delta={deltas.booked}

@@ -105,27 +105,18 @@ export async function getMonthlyAdSpend(year: number, month: number): Promise<{
   }
 }
 
-export interface MonthlyLeads {
+export interface GHLLeads {
   total:  number
   byDate: Record<string, number>  // YYYY-MM-DD → count (account TZ day)
 }
 
-// Counts CRM contacts tagged "ads" created this month — same source as Ad Spend page's
-// leads tile so Overview and Ad Spend always show the same number.
-// Returns total and a per-day breakdown so callers can bucket by week.
-export async function getMonthlyLeads(year: number, month: number): Promise<MonthlyLeads> {
+// Core: fetch CRM contacts tagged "ads" for any date range (YYYY-MM-DD strings).
+// Same logic as Ad Spend page's fetchContactLeads — so all pages agree.
+export async function getLeadsForRange(startDate: string, endDate: string): Promise<GHLLeads> {
   const pit        = process.env.GHL_PIT_STR
   const locationId = process.env.GHL_LOCATION_ID_STR
 
   if (!pit || !locationId) return { total: 0, byDate: {} }
-
-  const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`
-  const lastDay   = new Date(year, month + 1, 0).getDate()
-  const today     = new Date()
-  const capDay    = today.getFullYear() === year && today.getMonth() === month
-    ? today.getDate()
-    : lastDay
-  const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(capDay).padStart(2, '0')}`
 
   const gte = zonedMs(startDate, 0, 0, 0, 0)
   const lte = zonedMs(endDate,  23, 59, 59, 999)
@@ -187,4 +178,16 @@ export async function getMonthlyLeads(year: number, month: number): Promise<Mont
 
   const total = Object.values(byCampaign).reduce((s, n) => s + n, 0)
   return { total, byDate }
+}
+
+// Convenience: current-month leads — used for MTD section (Cost/Lead, weekly table).
+export async function getMonthlyLeads(year: number, month: number): Promise<GHLLeads> {
+  const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`
+  const lastDay   = new Date(year, month + 1, 0).getDate()
+  const today     = new Date()
+  const capDay    = today.getFullYear() === year && today.getMonth() === month
+    ? today.getDate()
+    : lastDay
+  const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(capDay).padStart(2, '0')}`
+  return getLeadsForRange(startDate, endDate)
 }
