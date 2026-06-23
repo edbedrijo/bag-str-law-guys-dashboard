@@ -174,21 +174,22 @@ export default async function ClosedDealsPage() {
 
       {/* Deal table */}
       <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-        <div className="px-5 pt-5 pb-3 flex items-start justify-between">
+        <div className="px-5 pt-5 pb-3 flex items-start justify-between gap-4">
           <div>
             <h2 className="text-base font-semibold text-gray-900">Closed Deals</h2>
             <p className="text-sm text-gray-400">Every won deal</p>
           </div>
-          <p className="text-xs text-gray-300 mt-1 text-right leading-relaxed">
-            Drag headers to reorder<br />Drag right edge to resize
-          </p>
+          <div className="flex items-start gap-4">
+            <p className="text-xs text-gray-300 mt-1 text-right leading-relaxed">
+              Drag headers to reorder<br />Drag right edge to resize
+            </p>
+            <AddDealButton options={dealOptions} />
+          </div>
         </div>
         <Suspense fallback={<div className="px-5 py-10 text-center text-gray-400 text-sm">Loading deals…</div>}>
           <ClosedDealsTable deals={raw} options={dealOptions} />
         </Suspense>
       </div>
-
-      <AddDealButton options={dealOptions} />
     </>
   )
 }

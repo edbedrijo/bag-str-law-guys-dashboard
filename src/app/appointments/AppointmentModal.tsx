@@ -130,7 +130,7 @@ export function AddApptButton({ options }: { options: ApptOptions }) {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium px-4 py-3 rounded-full shadow-lg transition-colors"
+        className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium px-4 py-2 rounded-full shadow-sm transition-colors shrink-0"
       >
         <Plus size={18} />
         Add Appointment
