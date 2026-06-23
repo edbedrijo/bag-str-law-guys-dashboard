@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useCallback, useRef } from 'react'
+import React, { useEffect, useState, useCallback, useRef, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -72,7 +72,7 @@ function StatusBadge({ status }: { status: string }) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function AdSpendPage() {
+function AdSpendInner() {
   const searchParams = useSearchParams()
   const preset = (searchParams.get('range') ?? 'this_month') as DateRangePreset
 
@@ -570,5 +570,13 @@ export default function AdSpendPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function AdSpendPage() {
+  return (
+    <Suspense>
+      <AdSpendInner />
+    </Suspense>
   )
 }
