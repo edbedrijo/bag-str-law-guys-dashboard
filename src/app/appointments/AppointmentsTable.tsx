@@ -257,7 +257,7 @@ export default function AppointmentsTable({ rows: rawRows, options }: { rows: Ap
   const [colOrder,  setColOrder]  = useState<ColKey[]>(DEFAULT_ORDER)
   const [colWidths, setColWidths] = useState<Record<ColKey, number>>(DEFAULT_WIDTHS)
 
-  const [filterStatuses, setFilterStatuses] = useState<Set<string>>(new Set())
+  const [filterStatuses, setFilterStatuses] = useState<Set<string>>(new Set(['Scheduled']))
   const [filterOutcomes, setFilterOutcomes] = useState<Set<string>>(new Set())
   const [filterClosers,  setFilterClosers]  = useState<Set<string>>(new Set())
   const [search,         setSearch]         = useState('')
