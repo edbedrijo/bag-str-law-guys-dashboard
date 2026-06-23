@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { Suspense } from 'react'
 import { getLeads, getAppointments, getCeoDashboard, getClosedDeals } from '@/lib/sheets'
-import { getMonthlyAdSpend } from '@/lib/ghl'
+import { getMonthlyAdSpend, getMonthlyLeads } from '@/lib/ghl'
 import { getDateRange, getPriorRange, inRange, type DateRangePreset } from '@/lib/dateRange'
 import KpiCard from '@/components/KpiCard'
 import MonthlyChart from '@/components/MonthlyChart'
@@ -128,12 +128,13 @@ export default async function OverviewPage({
   const range      = getDateRange(preset, now)
   const priorRange = getPriorRange(preset, now)
 
-  const [leadRows, rows, ceoDash, ghlAdSpend, closedDeals] = await Promise.all([
+  const [leadRows, rows, ceoDash, ghlAdSpend, closedDeals, ghlLeadsMtd] = await Promise.all([
     getLeads(),
     getAppointments(),
     getCeoDashboard(),
     getMonthlyAdSpend(currentYear, currentMonth),
     getClosedDeals(),
+    getMonthlyLeads(currentYear, currentMonth),
   ])
 
   // ── Top tile KPIs from Appointments tab ─────────────────────────────────────
@@ -202,9 +203,8 @@ export default async function OverviewPage({
   const mtdStart = Date.UTC(currentYear, currentMonth, 1)
   const mtdEnd   = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
 
-  // MTD leads + booked + showed from CEO Dashboard sheet — same source as the weekly table
-  // so the summary cards and table totals always agree.
-  const mtdLeads  = ceoDash.weekly.reduce((sum, w) => sum + w.leads,  0)
+  // MTD leads from GHL CRM contacts — same source as Ad Spend page so the numbers agree.
+  const mtdLeads  = ghlLeadsMtd
   const mtdBooked = ceoDash.weekly.reduce((sum, w) => sum + w.booked, 0)
   const mtdShowed = ceoDash.weekly.reduce((sum, w) => sum + w.showed, 0)
 
