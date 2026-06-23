@@ -381,21 +381,21 @@ export default async function OverviewPage({
   return (
     <div>
       {/* Page header with date range picker top-right */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Overview</h1>
-        <div className="flex flex-col items-end gap-1">
-          <Suspense>
+      <Suspense>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">Overview</h1>
+          <div className="flex flex-col items-end gap-1">
             <DateRangePicker current={preset} />
-          </Suspense>
-          <span className="text-[11px] text-gray-400">
-            {(() => {
-              const fmt2 = (p: { year: number; month: number; day: number }) =>
-                new Date(p.year, p.month, p.day).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-              return `${fmt2(range.start)} – ${fmt2(range.end)}`
-            })()}
-          </span>
+            <span className="text-[11px] text-gray-400">
+              {(() => {
+                const fmt2 = (p: { year: number; month: number; day: number }) =>
+                  new Date(p.year, p.month, p.day).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                return `${fmt2(range.start)} – ${fmt2(range.end)}`
+              })()}
+            </span>
+          </div>
         </div>
-      </div>
+      </Suspense>
 
       {/* Period Performance — section header */}
       <div className="mb-3">
