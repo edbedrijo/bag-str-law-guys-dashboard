@@ -246,16 +246,30 @@ async function fetchCampaignData(
       const adsets: AdSetRow[] = []
 
       for (const adset of active) {
+        const adsetId = String(adset.adSetId ?? adset.adset_id ?? adset.id ?? '')
         const s  = num(adset.spend)
         const im = num(adset.impressions)
         const cl = num(adset.clicks)
-        const le = extractLeads(adset.results)
+        // Adset-level results can undercount leads vs GHL's report. The accurate count
+        // (matching GHL) comes from summing ad-level pixel leads, so crawl ads per adset.
+        let le = extractLeads(adset.results)
+        if (adsetId) {
+          const adParams = new URLSearchParams({ locationId, listType: 'ads', adSetId: adsetId, campaignId: camp.campaignId, startDate, endDate, type: 'INTEGRATION' })
+          const adRes = await fetch(`${GHL_BASE}/ad-publishing/facebook/reporting/list?${adParams}`, { headers: ghlHeaders(pit), cache: 'no-store' })
+          if (adRes.ok) {
+            const adData = await adRes.json()
+            const adList: Array<Record<string, unknown>> =
+              Array.isArray(adData) ? adData : adData.ads ?? adData.data ?? []
+            const adLeads = adList.reduce((sum, ad) => sum + (num(ad.leads) || extractLeads(ad.results)), 0)
+            if (adLeads > le) le = adLeads
+          }
+        }
         totalSpend       += s
         totalImpressions += im
         totalClicks      += cl
         totalLeads       += le
         adsets.push({
-          adsetId:     String(adset.adSetId ?? adset.adset_id ?? adset.id ?? ''),
+          adsetId,
           name:        String(adset.name ?? ''),
           status:      String(adset.status ?? 'UNKNOWN'),
           spend:       s,
@@ -268,6 +282,8 @@ async function fetchCampaignData(
         })
       }
 
+      const leads = totalLeads
+
       return {
         campaignId:  camp.campaignId,
         name:        camp.name,
@@ -276,10 +292,10 @@ async function fetchCampaignData(
         spend:       totalSpend,
         impressions: totalImpressions,
         clicks:      totalClicks,
-        leads:       totalLeads,
+        leads,
         cpc:         totalClicks > 0 ? totalSpend / totalClicks : 0,
         ctr:         totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0,
-        cpl:         totalLeads > 0 ? totalSpend / totalLeads : 0,
+        cpl:         leads > 0 ? totalSpend / leads : 0,
         adsets,
       } satisfies CampaignRow
     })
@@ -391,21 +407,18 @@ export async function GET(request: Request) {
 
   const hasPrior = !!(priorStartDate && priorEndDate)
 
-  const [daily, currentCamp, priorCamp, currentLeads, priorLeads] = await Promise.all([
+  const [daily, currentCamp, priorCamp, currentLeads] = await Promise.all([
     fetchDailyData(pit, locationId, startDate, endDate, aggregate),
     fetchCampaignData(pit, locationId, startDate, endDate),
     hasPrior ? fetchCampaignData(pit, locationId, priorStartDate!, priorEndDate!) : Promise.resolve(null),
     fetchContactLeads(pit, locationId, startDate, endDate),
-    hasPrior ? fetchContactLeads(pit, locationId, priorStartDate!, priorEndDate!) : Promise.resolve(null),
   ])
 
-  // Override per-campaign leads with GHL Contacts counts so the table matches the tile.
-  // Falls back to the campaign-crawl pixel leads only if the contacts search failed.
-  const campaigns: CampaignRow[] = currentCamp.campaigns.map((c) => {
-    const contactLeads = currentLeads?.byCampaign[c.campaignId]
-    if (contactLeads === undefined) return c
-    return { ...c, leads: contactLeads, cpl: contactLeads > 0 ? c.spend / contactLeads : 0 }
-  })
+  // Use Facebook pixel leads (offsiteConversion.fbPixelLead) so the tile and table
+  // match GHL's Meta Ads report exactly. The contact-based count (currentLeads) is
+  // kept only for the daily chart breakdown (leadsByDate) — the one source with
+  // per-day granularity.
+  const campaigns: CampaignRow[] = currentCamp.campaigns
 
   // Tile totals derived from campaign rows — single source of truth so tiles and table always agree.
   // Aggregated API (Endpoint 1) is only used for the daily chart breakdown above.
@@ -413,7 +426,7 @@ export async function GET(request: Request) {
   const totalImpressions = campaigns.reduce((s, c) => s + c.impressions, 0)
   const totalClicks      = campaigns.reduce((s, c) => s + c.clicks, 0)
   const totalBudget      = campaigns.reduce((s, c) => s + c.budget, 0)
-  const leads            = currentLeads?.total ?? currentCamp.totalLeads
+  const leads            = currentCamp.totalLeads
 
   const totals: AdSpendTotals = {
     spend:       totalSpend,
@@ -434,7 +447,7 @@ export async function GET(request: Request) {
     const pImpressions = pc.reduce((s, c) => s + c.impressions, 0)
     const pClicks      = pc.reduce((s, c) => s + c.clicks, 0)
     const pBudget      = pc.reduce((s, c) => s + c.budget, 0)
-    const pLeads       = priorLeads?.total ?? priorCamp.totalLeads
+    const pLeads       = priorCamp.totalLeads
     priorTotals = {
       spend:       pSpend,
       impressions: pImpressions,
