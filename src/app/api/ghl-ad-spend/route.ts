@@ -68,6 +68,52 @@ function ghlHeaders(pit: string) {
   return { Authorization: `Bearer ${pit}`, Version: '2021-04-15' }
 }
 
+// STR Law Guys account timezone. Using a named zone (not a fixed offset) so day
+// boundaries stay correct across the CDT/CST daylight-saving switch.
+const ACCOUNT_TZ = 'America/Chicago'
+
+// Offset (ms) between the given instant's wall-clock time in `tz` and UTC.
+function tzOffsetMs(instant: Date, tz: string): number {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
+  const p: Record<string, string> = {}
+  for (const part of dtf.formatToParts(instant)) p[part.type] = part.value
+  const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour === 24 ? 0 : +p.hour, +p.minute, +p.second)
+  return asUTC - instant.getTime()
+}
+
+// UTC epoch ms for a wall-clock time (YYYY-MM-DD + h:m:s) in the account timezone.
+function zonedMs(dateStr: string, h: number, m: number, s: number, ms: number): number {
+  const [y, mo, d] = dateStr.split('-').map(Number)
+  const guess = Date.UTC(y, mo - 1, d, h, m, s, ms)
+  return guess - tzOffsetMs(new Date(guess), ACCOUNT_TZ)
+}
+
+// YYYY-MM-DD calendar day of an instant, as seen in the account timezone.
+function zonedDay(instant: Date): string {
+  const dtf = new Intl.DateTimeFormat('en-CA', {
+    timeZone: ACCOUNT_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+  })
+  return dtf.format(instant)  // en-CA formats as YYYY-MM-DD
+}
+
+// Runs `fn` over `items` with at most `limit` concurrent calls, preserving order.
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let next = 0
+  async function worker() {
+    while (next < items.length) {
+      const idx = next++
+      results[idx] = await fn(items[idx])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return results
+}
+
 function extractLeads(rawResults: unknown): number {
   if (Array.isArray(rawResults)) {
     return (rawResults as Array<{ actionType: string; value: string | number }>)
@@ -102,9 +148,9 @@ async function fetchContactLeads(
   startDate: string,
   endDate: string,
 ): Promise<ContactLeads | null> {
-  // STR Law Guys account timezone is CDT (UTC-5) — match GHL's day boundaries
-  const gte = new Date(`${startDate}T00:00:00.000-05:00`).getTime()
-  const lte = new Date(`${endDate}T23:59:59.999-05:00`).getTime()
+  // Match GHL's day boundaries in the account timezone (DST-aware)
+  const gte = zonedMs(startDate, 0, 0, 0, 0)
+  const lte = zonedMs(endDate, 23, 59, 59, 999)
 
   const byCampaign: Record<string, number> = {}
   const byDate:     Record<string, number> = {}
@@ -144,10 +190,9 @@ async function fetchContactLeads(
       const cid = c.attributionSource?.campaignId ?? c.lastAttributionSource?.campaignId
       if (!cid) continue
       byCampaign[cid] = (byCampaign[cid] ?? 0) + 1
-      // dateAdded is an ISO string; extract YYYY-MM-DD in CDT (-05:00)
+      // dateAdded is an ISO instant; bucket by its calendar day in the account TZ
       if (c.dateAdded) {
-        const day = new Date(new Date(c.dateAdded).getTime() - 5 * 60 * 60 * 1000)
-          .toISOString().slice(0, 10)
+        const day = zonedDay(new Date(c.dateAdded))
         byDate[day] = (byDate[day] ?? 0) + 1
       }
     }
@@ -184,8 +229,8 @@ async function fetchCampaignData(
 
   const campRaw: Array<Record<string, unknown>> = campData.campaigns ?? campData.data ?? campData ?? []
 
-  const results = await Promise.all(
-    campList.map(async (camp) => {
+  // Cap parallel GHL requests so large accounts don't trigger rate limits
+  const results = await mapLimit(campList, 5, async (camp) => {
       const raw = campRaw.find((r) => r.campaignId === camp.campaignId) ?? {}
       const budget = num(raw.dailyBudget ?? raw.daily_budget ?? raw.budget ?? 0)
 
@@ -257,8 +302,7 @@ async function fetchCampaignData(
         cpl:         leads > 0 ? totalSpend / leads : 0,
         adsets,
       } satisfies CampaignRow
-    })
-  )
+  })
 
   const campaigns = results.filter((r): r is CampaignRow => r !== null)
   const totalLeads = campaigns.reduce((s, c) => s + c.leads, 0)
